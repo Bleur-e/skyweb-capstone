@@ -32,8 +32,8 @@ const AuditLogsPage = () => {
                 <td className="px-4 py-3">Ana Reyes</td>
                 <td className="px-4 py-3 text-yellow-600">Edited</td>
                 <td className="px-4 py-3">Truck</td>
-                <td className="px-4 py-3">
-                  Changed status of Truck ID #002 to "Under Maintenance".
+              <td className="px-4 py-3">
+                      Changed status of Truck ID #002 to &quot;Under Maintenance&quot;.
                 </td>
               </tr>
               <tr className="border-b">
@@ -42,8 +42,8 @@ const AuditLogsPage = () => {
                 <td className="px-4 py-3 text-red-600">Deleted</td>
                 <td className="px-4 py-3">Driver</td>
                 <td className="px-4 py-3">
-                  Removed Driver ID #010 from the system.
-                </td>
+                          Removed Driver ID #010 from the system.
+                  </td>
               </tr>
             </tbody>
           </table>
