@@ -1,369 +1,273 @@
-'use client';
+"use client";
+import React, { useState, useEffect } from "react";
+import AddTruckModal from "./AddTruckModal";
+import ViewEditTruckModal from "./ViewEditTruckModal";
+import DeployTruckModal from "./DeployTruckModal";
+import supabase from "../../../supabaseClient";
 
-import React, { useState, useEffect } from 'react';
-import supabase from '../../../supabaseClient';
-
-const TruckPage = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [newTruck, setNewTruck] = useState({
-    type: '',
-    brand: '',
-    model: '',
-    plate_number: '',
-    photo_url: ''
-  });
+const TrucksPage = () => {
   const [trucks, setTrucks] = useState([]);
-  const [photoFile, setPhotoFile] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [selectedTruck, setSelectedTruck] = useState(null);
+  const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const brandOptions = {
-    Isuzu: ['Elf', 'Forward', 'Giga'],
-    Hino: ['300 Series', '500 Series', '700 Series'],
-    Mitsubishi: ['Fuso Canter', 'Fuso Fighter', 'Super Great'],
-    Toyota: ['Dyna', 'Toyoace'],
+  // ✅ Fetch current logged-in user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (!error && data?.user) {
+        const { data: userProfile } = await supabase
+          .from("users")
+          .select("id, role")
+          .eq("id", data.user.id)
+          .single();
+        setCurrentUser(userProfile);
+      }
+    };
+    getUser();
+  }, []);
+
+  // ✅ Fetch trucks (not archived)
+  const fetchTrucks = async () => {
+    const { data, error } = await supabase
+      .from("trucks")
+      .select("*")
+      .eq("is_archived", false)
+      .order("created_at", { ascending: false });
+    if (error) console.error("Error fetching trucks:", error);
+    else setTrucks(data || []);
+  };
+
+  // ✅ Fetch drivers
+  const fetchDrivers = async () => {
+    const { data, error } = await supabase.from("drivers").select("driver_id, name");
+    if (error) console.error("Error fetching drivers:", error);
+    else setDrivers(data || []);
   };
 
   useEffect(() => {
     fetchTrucks();
+    fetchDrivers();
   }, []);
 
-  const fetchTrucks = async () => {
-    const { data, error } = await supabase.from('trucks').select('*');
-    if (error) {
-      console.error('Error fetching trucks:', error);
-    } else {
-      setTrucks(data);
-    }
+  // ✅ Add Audit Log Helper
+  const addAuditLog = async (action, table_name, description) => {
+    if (!currentUser) return;
+    await supabase.from("audit_logs").insert([
+      {
+        user_id: currentUser.id,
+        role: currentUser.role,
+        action,
+        table_name,
+        description,
+      },
+    ]);
   };
 
-  const handleInputChange = (e) => {
-    setNewTruck({ ...newTruck, [e.target.name]: e.target.value });
-  };
-
-  const handleBrandChange = (e) => {
-    const brand = e.target.value;
-    setNewTruck({ ...newTruck, brand, model: '' });
-  };
-
-  const handlePhotoChange = (e) => {
-    setPhotoFile(e.target.files[0]);
-  };
-
-const handleAddTruck = async () => {
-  if (
-    !newTruck.type ||
-    !newTruck.brand ||
-    !newTruck.model ||
-    !newTruck.plate_number
-  ) {
-    alert('Please fill in all required fields');
-    return;
-  }
-
-  let photo_url = '';
-
-  // If user selected a photo, try to upload
-  if (photoFile) {
-    const fileExt = photoFile.name.split('.').pop();
-    const fileName = `${newTruck.plate_number}-${Date.now()}.${fileExt}`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('truck-photos')
-      .upload(fileName, photoFile, { upsert: true }); // allow overwrite
-
-    if (uploadError) {
-      console.error('Photo upload failed:', uploadError);
-      alert('Photo upload failed! Please try again.');
-      return; // stop adding truck if photo was chosen but failed
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('truck-photos')
-      .getPublicUrl(fileName);
-
-    photo_url = publicUrlData.publicUrl;
-  }
-
-  {/* Insert truck */}
-  const { error } = await supabase.from('trucks').insert([
-    {
-      ...newTruck,
-      photo_url
-    }
-  ]);
-
-  if (error) {
-    console.error('Error adding truck:', error);
-    alert('Failed to add truck.');
-  } else {
-    fetchTrucks();
-    setIsModalOpen(false);
-    setNewTruck({
-      type: '',
-      brand: '',
-      model: '',
-      plate_number: '',
-      photo_url: ''
-    });
-    setPhotoFile(null);
-  }
-};
-
-
-  const handleViewTruck = (truck) => {
-    setSelectedTruck(truck);
-    setIsViewModalOpen(true);
-  };
-
-  {/* Delete Truck */}
-  const handleDeleteTruck = async (truck) => {
-  if (!confirm("Are you sure you want to delete this truck?")) return;
-
-  {/* Delete photo from storage if exists */}
-  if (truck.photo_url) {
+  // ✅ Add Truck
+  const handleAddTruck = async (newTruckData) => {
     try {
-      // Extract file name from public URL
-      const filePath = truck.photo_url.split('/').pop();
-      const { error: storageError } = await supabase
-        .storage
-        .from('truck-photos')
-        .remove([filePath]);
+      const truckToInsert = {
+        ...newTruckData,
+        current_odometer: Number(newTruckData.current_odometer) || 0,
+        is_archived: false,
+      };
+      const { error } = await supabase.from("trucks").insert([truckToInsert]);
+      if (error) throw error;
 
-      if (storageError) {
-        console.error("Error deleting photo:", storageError);
-      }
+      await addAuditLog(
+        "Add",
+        "trucks",
+        `Added new truck ${newTruckData.plate_number}`
+      );
+      fetchTrucks();
+      setIsAddModalOpen(false);
     } catch (err) {
-      console.error("Error parsing photo URL:", err);
+      console.error("Error adding truck:", err);
+      alert("Failed to add truck.");
     }
-  }
+  };
 
-  {/* Delete truck record from table */}
-  const { error } = await supabase
-    .from('trucks')
-    .delete()
-    .eq('plate_number', truck.plate_number);
+  // ✅ Edit Truck
+  const handleEditTruck = async (updatedTruckData) => {
+    try {
+      const { plate_number, ...fields } = updatedTruckData;
+      fields.current_odometer = Number(fields.current_odometer) || 0;
 
-  if (error) {
-    console.error('Error deleting truck:', error);
-    alert('Failed to delete truck.');
-  } else {
-    fetchTrucks();
-    setIsViewModalOpen(false);
-    alert('Truck deleted successfully!');
-  }
-};
+      const { error } = await supabase
+        .from("trucks")
+        .update(fields)
+        .eq("plate_number", plate_number);
+      if (error) throw error;
 
+      await addAuditLog(
+        "Edit",
+        "trucks",
+        `Updated details of truck ${plate_number}`
+      );
+      fetchTrucks();
+      setIsViewEditModalOpen(false);
+      setSelectedTruck(null);
+    } catch (err) {
+      console.error("Error editing truck:", err);
+      alert("Failed to update truck.");
+    }
+  };
+
+  // ✅ Archive Truck
+  const handleArchiveTruck = async (plateNumber) => {
+    if (!window.confirm(`Archive truck ${plateNumber}?`)) return;
+    try {
+      const { error } = await supabase
+        .from("trucks")
+        .update({ is_archived: true })
+        .eq("plate_number", plateNumber);
+      if (error) throw error;
+
+      await addAuditLog(
+        "Delete",
+        "trucks",
+        `Archived truck ${plateNumber}`
+      );
+      fetchTrucks();
+      setIsViewEditModalOpen(false);
+      setSelectedTruck(null);
+    } catch (err) {
+      console.error("Error archiving truck:", err);
+      alert("Failed to archive truck.");
+    }
+  };
+
+  // ✅ View/Edit Modal open
+  const openViewEditModal = (truck) => {
+    setSelectedTruck(truck);
+    setIsViewEditModalOpen(true);
+  };
 
   return (
-    <main className="flex-1 p-6">
-      <h2 className="text-3xl font-bold text-gray-800 mb-4">Trucks</h2>
+    <div className="container mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-6 text-gray-800">Truck Management</h1>
 
-      {/* Add Truck Button */}
-      <button
-        className="bg-green-500 text-white px-4 py-2 rounded mb-4 hover:bg-green-600"
-        onClick={() => setIsModalOpen(true)}
-      >
-        Add Truck
-      </button>
-
-      {/* Add Truck Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-            <h3 className="text-xl text-blue-700 font-bold mb-4">Add New Truck</h3>
-            <div className="space-y-3">
-              <input
-                name="type"
-                placeholder="Truck Type"
-                value={newTruck.type}
-                onChange={handleInputChange}
-                className="w-full border text-blue-700 border-blue-700 p-2 rounded"
-              />
-              {/* Brand Dropdown with manual input */}
-              <div>
-                <select
-                  value={newTruck.brand}
-                  onChange={handleBrandChange}
-                  className="w-full border text-blue-700 border-blue-700 p-2 rounded mb-2"
-                >
-                  <option value="">Select Brand</option>
-                  {Object.keys(brandOptions).map((brand) => (
-                    <option key={brand} value={brand}>
-                      {brand}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="Or type brand"
-                  value={newTruck.brand}
-                  onChange={handleInputChange}
-                  name="brand"
-                  className="w-full border text-blue-700 border-blue-700 p-2 rounded"
-                />
-              </div>
-              {/* Model Dropdown with manual input */}
-              <div>
-                <select
-                  value={newTruck.model}
-                  onChange={handleInputChange}
-                  name="model"
-                  className="w-full border text-blue-700 border-blue-700 p-2 rounded mb-2"
-                  disabled={!brandOptions[newTruck.brand]}
-                >
-                  <option value="">Select Model</option>
-                  {brandOptions[newTruck.brand]?.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="Or type model"
-                  value={newTruck.model}
-                  onChange={handleInputChange}
-                  name="model"
-                  className="w-full border text-blue-700 border-blue-700 p-2 rounded"
-                />
-              </div>
-              <input
-                name="plate_number"
-                placeholder="Plate Number"
-                value={newTruck.plate_number}
-                onChange={handleInputChange}
-                className="w-full border text-blue-700 border-blue-700 p-2 rounded"
-              />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoChange}
-                className="w-full border border-blue-700 p-2 rounded"
-              />
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 bg-gray-400 rounded hover:bg-gray-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddTruck}
-                className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Truck Modal */}
-      {isViewModalOpen && selectedTruck && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-      <h3 className="text-xl text-blue-700 font-bold mb-4">Truck Details</h3>
-      <div className="space-y-3">
-        <div>
-          <strong className="text-gray-800">Brand:</strong>{" "}
-          <span className="text-indigo-700">{selectedTruck.brand}</span>
-        </div>
-        <div>
-          <strong className="text-gray-800">Type:</strong>{" "}
-          <span className="text-indigo-700">{selectedTruck.type}</span>
-        </div>
-        <div>
-          <strong className="text-gray-800">Model:</strong>{" "}
-          <span className="text-indigo-700">{selectedTruck.model}</span>
-        </div>
-        <div>
-          <strong className="text-gray-800">Plate Number:</strong>{" "}
-          <span className="text-indigo-700">{selectedTruck.plate_number}</span>
-        </div>
-        {selectedTruck.photo_url && (
-          <div>
-            <strong className="text-gray-800">Photo:</strong>
-            <img
-              src={selectedTruck.photo_url}
-              alt="Truck"
-              className="mt-2 w-full max-h-64 object-contain rounded"
-            />
-          </div>
-        )}
-      </div>
-      <div className="flex justify-end gap-3 mt-6">
+      <div className="flex justify-end mb-4">
         <button
-          onClick={() => setIsViewModalOpen(false)}
-          className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-600"
+          onClick={() => setIsAddModalOpen(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md shadow-md"
         >
-          Close
+          Add Truck
         </button>
-
-        {/* Delete Truck */}
-      <button
-      onClick={() => handleDeleteTruck(selectedTruck)}
-      className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-      >
-        Delete
-      </button>
       </div>
-    </div>
-  </div>
-)}
 
-      {/* Table */}
-      <table className="min-w-full bg-white shadow rounded-lg overflow-hidden">
-        <thead className="bg-indigo-100 text-gray-700">
-          <tr>
-            <th className="px-4 py-2 text-left">Type</th>
-            <th className="px-4 py-2 text-left">Brand</th>
-            <th className="px-4 py-2 text-left">Model</th>
-            <th className="px-4 py-2 text-left">Plate Number</th>
-            <th className="px-4 py-2 text-left">Photo</th>
-            <th className="px-4 py-2 text-left">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="text-gray-600">
-          {trucks.length > 0 ? (
-            trucks.map((truck) => (
-              <tr key={truck.id} className="border-b">
-                <td className="px-4 py-3">{truck.type}</td>
-                <td className="px-4 py-3">{truck.brand}</td>
-                <td className="px-4 py-3">{truck.model}</td>
-                <td className="px-4 py-3">{truck.plate_number}</td>
-                <td className="px-4 py-3">
-                  {truck.photo_url ? (
-                    <img
-                      src={truck.photo_url}
-                      alt="Truck"
-                      className="w-16 h-16 object-cover rounded"
-                    />
-                  ) : (
-                    <span className="text-gray-400">No photo</span>
-                  )}
+      <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+        <table className="min-w-full leading-normal text-gray-600">
+          <thead>
+            <tr>
+              {[
+                "Plate Number",
+                "Driver",
+                "Brand",
+                "Type",
+                "Model",
+                "Odometer",
+                "Status",
+                "Actions",
+              ].map((head) => (
+                <th
+                  key={head}
+                  className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase"
+                >
+                  {head}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {trucks.map((truck) => (
+              <tr key={truck.plate_number} className="hover:bg-gray-50">
+                <td className="px-5 py-5 border-b border-gray-200">{truck.plate_number}</td>
+                <td className="px-5 py-5 border-b border-gray-200">
+                  {drivers.find((d) => d.driver_id === truck.driver)?.name || truck.driver}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-5 py-5 border-b border-gray-200">{truck.brand}</td>
+                <td className="px-5 py-5 border-b border-gray-200">{truck.type}</td>
+                <td className="px-5 py-5 border-b border-gray-200">{truck.model}</td>
+                <td className="px-5 py-5 border-b border-gray-200">
+                  {truck.current_odometer?.toLocaleString()}
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200">
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      truck.status === "Available"
+                        ? "bg-green-200 text-green-900"
+                        : truck.status === "Deployed"
+                        ? "bg-yellow-200 text-yellow-900"
+                        : "bg-red-200 text-red-900"
+                    }`}
+                  >
+                    {truck.status}
+                  </span>
+                </td>
+                <td className="px-5 py-5 border-b border-gray-200">
                   <button
-                    className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                    onClick={() => handleViewTruck(truck)}
+                    onClick={() => openViewEditModal(truck)}
+                    className="text-blue-600 hover:text-blue-800 font-semibold mr-3"
                   >
                     View
                   </button>
+                  <button
+                    onClick={() => {
+                      setSelectedTruck(truck);
+                      setIsDeployModalOpen(true);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md"
+                  >
+                    Deploy
+                  </button>
                 </td>
               </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan="6" className="px-4 py-3 text-center text-gray-400">
-                No trucks found.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </main>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add Modal */}
+      <AddTruckModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSave={handleAddTruck}
+        drivers={drivers}
+      />
+
+      {/* View/Edit Modal */}
+      {selectedTruck && (
+        <ViewEditTruckModal
+          isOpen={isViewEditModalOpen}
+          onClose={() => {
+            setIsViewEditModalOpen(false);
+            setSelectedTruck(null);
+          }}
+          truck={selectedTruck}
+          drivers={drivers}
+          onEdit={handleEditTruck}
+          onArchive={handleArchiveTruck}
+        />
+      )}
+
+      {/* Deploy Modal */}
+      {selectedTruck && (
+        <DeployTruckModal
+          isOpen={isDeployModalOpen}
+          onClose={() => setIsDeployModalOpen(false)}
+          truck={selectedTruck}
+          driver={drivers.find((d) => d.driver_id === selectedTruck.driver)}
+          refreshTrucks={fetchTrucks}
+          currentUser={currentUser} // ✅ Pass to modal
+        />
+      )}
+    </div>
   );
 };
 
-export default TruckPage;
+export default TrucksPage;

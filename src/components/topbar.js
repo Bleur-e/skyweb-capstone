@@ -1,11 +1,24 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import NotificationDropdown from 'components/notificationDropdown';
 import Link from 'next/link';
 
 export default function Topbar() {
+  const [currentUser, setCurrentUser] = useState(null);
+
   useEffect(() => {
+    // ✅ Load from localStorage (what you saved in loginForm)
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) {
+      try {
+        setCurrentUser(JSON.parse(storedUser));
+      } catch {
+        setCurrentUser(null);
+      }
+    }
+
+    // ✅ Menu toggle logic
     const userMenuButton = document.getElementById('user-menu-button');
     const userMenu = document.getElementById('user-menu');
 
@@ -19,11 +32,11 @@ export default function Topbar() {
       }
     }
 
-    userMenuButton.addEventListener('click', toggleMenu);
+    userMenuButton?.addEventListener('click', toggleMenu);
     window.addEventListener('click', closeMenu);
 
     return () => {
-      userMenuButton.removeEventListener('click', toggleMenu);
+      userMenuButton?.removeEventListener('click', toggleMenu);
       window.removeEventListener('click', closeMenu);
     };
   }, []);
@@ -40,17 +53,23 @@ export default function Topbar() {
         <span className="text-lg font-semibold text-white hidden lg:inline">Skyland Motorpool</span>
       </div>
 
-
-    {/* Notification */}
+      {/* Right side */}
       <div className="flex items-center space-x-6">
-       
-        <NotificationDropdown />
-         
-
+        {/* ✅ Pass currentUser from localStorage */}
+        {currentUser && (
+          <NotificationDropdown currentUser={currentUser} />
+        )}
 
         <div className="relative">
           <button id="user-menu-button" className="flex items-center text-sm focus:outline-none">
-            <img className="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Bestie" alt="User Avatar" />
+            <img
+              className="w-8 h-8 rounded-full"
+              src={
+                currentUser?.account_photo ||
+                `https://ui-avatars.com/api/?name=${currentUser?.full_name || "User"}`
+              }
+              alt="User Avatar"
+            />
           </button>
 
           <div id="user-menu" className="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-20">
