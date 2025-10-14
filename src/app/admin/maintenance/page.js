@@ -1,6 +1,5 @@
 'use client';
 import React, { useState } from 'react';
-import MaintenanceModal from '../../../components/MaintenanceModal';
 const MaintenancePage = () => {
   const [showModal, setShowModal] = useState(false);
 
