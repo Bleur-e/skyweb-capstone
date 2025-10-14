@@ -90,51 +90,84 @@ const AddTruckModal = ({ isOpen, onClose, onSave, drivers }) => {
   e.preventDefault();
 
   let finalPhotoUrl = formData.photo_url;
-   // Upload photo to Supabase Storage if a file is selected
+
+  // Upload photo if selected
   if (photoFile) {
-    const fileExt = photoFile.name.split('.').pop();
+    const fileExt = photoFile.name.split(".").pop();
     const fileName = `${formData.plate_number}-${Date.now()}.${fileExt}`;
     const { data: uploadData, error: uploadError } = await supabase
       .storage
-      .from('truck-photos')
+      .from("truck-photos")
       .upload(fileName, photoFile, { upsert: true });
 
     if (uploadError) {
-      alert('Failed to upload photo!');
+      alert("Failed to upload photo!");
       return;
     }
 
     // Get public URL
     const { data: publicUrlData } = supabase
       .storage
-      .from('truck-photos')
+      .from("truck-photos")
       .getPublicUrl(fileName);
 
     finalPhotoUrl = publicUrlData.publicUrl;
   }
 
-  // Only include columns that exist in your trucks table!
-  const truckData = {
-    plate_number: formData.plate_number,
-    spec_id: formData.spec_id,
-    brand: selectedBrand,
-    model: selectedModel,
-    type: formData.type,
-    driver: formData.driver,
-    current_odometer: Number(formData.current_odometer) || 0,
-    last_change_oil_odometer: Number(formData.last_change_oil_odometer) || 0,
-    photo_url: finalPhotoUrl,
-    status: formData.status,
-    is_archived: false,
-  };
+  try {
+    // 🟣 1️⃣ Get change_oil_interval from truck_specs
+    const { data: specs, error: specsError } = await supabase
+      .from("truck_specs")
+      .select("change_oil_interval")
+      .eq("spec_id", formData.spec_id)
+      .single();
 
-  await onSave(truckData);
-  setFormData(initialFormState);
-  setPhotoFile(null);
-  setSelectedBrand("");
-  setSelectedModel("");
-  setModels([]);
-  setTypes([]);
+    if (specsError) throw specsError;
+
+    const intervalKm = specs.change_oil_interval;
+    const intervalMiles = intervalKm * 0.621371; // Convert km → miles
+
+    // 🟣 2️⃣ Compute next change oil odometer
+    const lastChangeOdo = Number(formData.last_change_oil_odometer) || 0;
+    const nextChangeOdo = lastChangeOdo + intervalMiles;
+
+    // 🟣 3️⃣ Prepare truck data
+    const truckData = {
+      plate_number: formData.plate_number,
+      spec_id: formData.spec_id,
+      brand: selectedBrand,
+      model: selectedModel,
+      type: formData.type,
+      driver: formData.driver,
+      current_odometer: Number(formData.current_odometer) || 0,
+      last_change_oil_odometer: lastChangeOdo,
+      next_change_oil_odometer: nextChangeOdo, // ✅ computed value
+      photo_url: finalPhotoUrl,
+      status: formData.status,
+      is_archived: false,
+    };
+
+    // 🟣 4️⃣ Save to database
+    const { error } = await supabase.from("trucks").insert([truckData]);
+    if (error) throw error;
+
+    alert(
+      `✅ Truck added successfully!\nNext change oil at ${nextChangeOdo.toFixed(2)} miles.`
+    );
+
+    // 🟣 5️⃣ Reset form
+    setFormData(initialFormState);
+    setPhotoFile(null);
+    setSelectedBrand("");
+    setSelectedModel("");
+    setModels([]);
+    setTypes([]);
+    onClose();
+
+  } catch (err) {
+    console.error("Error adding truck:", err);
+    alert("⚠️ Failed to add truck.");
+  }
 };
 
   return (

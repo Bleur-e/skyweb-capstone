@@ -1,6 +1,18 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import {
+  LayoutDashboard,
+  Truck,
+  Package,
+  Users,
+  FileText,
+  ClipboardList,
+  ClipboardCheck,
+  FileChartColumn,
+  FileArchive,
+  UserCog,
+} from 'lucide-react';
 
 export default function Sidebar({ role }) {
   const [showUserRoles, setShowUserRoles] = useState(false);
@@ -16,49 +28,62 @@ export default function Sidebar({ role }) {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
+  // 🎯 Conditional links for Admin
+  const isAdmin = role?.toLowerCase() === 'admin';
+
   return (
-    <aside className="bg-blue-900 text-white w-64 min-h-screen p-4">
-      <h1 className="text-2xl font-bold mb-6">Skyweb</h1>
-      <nav>
-        <ul className="space-y-4">
-          {/* Dashboard Link */}
+    <aside className="bg-gradient-to-b from-blue-900 to-blue-950 text-white w-64 min-h-screen p-4 shadow-xl flex flex-col">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold tracking-wide text-amber-400 drop-shadow">Skyweb</h1>
+        <p className="text-sm text-gray-300">Skyland Motorpool</p>
+      </div>
+
+      <nav className="flex-1">
+        <ul className="space-y-3">
+          {/* Dashboard */}
           <li>
-            <Link href={`/${role}/dashboard`} className="block hover:bg-amber-700 p-2 rounded">
-              Dashboard
+            <Link href={`/${role}/dashboard`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+              <LayoutDashboard className="w-5 h-5" /> Dashboard
             </Link>
           </li>
 
-          {/* Trucks Link */}
+          {/* Trucks */}
           <li>
-            <Link href={`/${role}/trucks`} className="block hover:bg-amber-700 p-2 rounded">
-              Trucks
+            <Link href={`/${role}/trucks`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+              <Truck className="w-5 h-5" /> Trucks
             </Link>
           </li>
 
-          {/* Maintenance Link */}
-          <li>
-            <Link href={`/${role}/maintenance`} className="block hover:bg-amber-700 p-2 rounded">
-              Maintenance
-            </Link>
-          </li>
+          {/* Maintenance (Hidden for Admin) */}
+          {!isAdmin && (
+            <li>
+              <Link href={`/${role}/maintenance`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                <ClipboardList className="w-5 h-5" /> Maintenance
+              </Link>
+            </li>
+          )}
 
-          {/* User Roles Dropdown */}
+          {/* User Roles */}
           <li className="relative" ref={dropdownRef}>
             <button
               onClick={() => setShowUserRoles(!showUserRoles)}
-              className="block hover:bg-amber-700 p-2 rounded w-full text-left"
+              className="flex items-center justify-between w-full p-2 rounded hover:bg-amber-600 transition"
             >
-              User Roles
+              <span className="flex items-center gap-3">
+                <Users className="w-5 h-5" /> User Roles
+              </span>
+              <span className={`transform transition-transform ${showUserRoles ? 'rotate-90' : ''}`}>›</span>
             </button>
+
             {showUserRoles && (
-              <ul className="absolute left-0 w-full bg-blue-800 text-white rounded shadow-lg z-10">
+              <ul className="ml-6 mt-1 bg-blue-800/50 rounded-md overflow-hidden">
                 <li>
-                  <Link href={`/${role}/drivers`} className="block px-4 py-2 hover:bg-amber-600">
+                  <Link href={`/${role}/drivers`} className="block px-4 py-2 hover:bg-amber-500 transition">
                     Drivers
                   </Link>
                 </li>
                 <li>
-                  <Link href={`/${role}/mechanics`} className="block px-4 py-2 hover:bg-amber-600">
+                  <Link href={`/${role}/mechanics`} className="block px-4 py-2 hover:bg-amber-500 transition">
                     Mechanics
                   </Link>
                 </li>
@@ -66,60 +91,67 @@ export default function Sidebar({ role }) {
             )}
           </li>
 
-          {/* Inventory Link */}
+          {/* Inventory */}
           <li>
-            <Link href={`/${role}/inventory`} className="block hover:bg-amber-700 p-2 rounded">
-              Inventory
+            <Link href={`/${role}/inventory`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+              <Package className="w-5 h-5" /> Inventory
             </Link>
           </li>
 
-          {/* Invoice Link */}
-          <li>
-            <Link href={`/${role}/invoice`} className="block hover:bg-amber-700 p-2 rounded">
-              Invoice
-            </Link>
-          </li>
+          {/* Invoice (Hidden for Admin) */}
+          {!isAdmin && (
+            <li>
+              <Link href={`/${role}/invoice`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                <FileText className="w-5 h-5" /> Invoice
+              </Link>
+            </li>
+          )}
 
-          {/* User Request Link */}
+          {/* Requests */}
           <li>
-            <Link href={`/${role}/userRequest`} className="block hover:bg-amber-700 p-2 rounded">
-              Request Page
+            <Link href={`/${role}/userRequest`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+              <ClipboardCheck className="w-5 h-5" /> Request Page
             </Link>
           </li>
 
           {/* Logs Section */}
           <li>
-            <p className="text-lg font-semibold mt-4 text-amber-500 p-2 rounded">Logs</p>
-            <ul className="ml-4 space-y-2">
+            <p className="text-lg font-semibold mt-6 mb-2 text-amber-400">Logs</p>
+            <ul className="ml-3 space-y-2">
               <li>
-                <Link href={`/${role}/userRequestLogs`} className="block hover:bg-amber-700 p-2 rounded">
-                  Request
+                <Link href={`/${role}/userRequestLogs`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                  <ClipboardCheck className="w-5 h-5" /> Request
                 </Link>
               </li>
               <li>
-                <Link href={`/${role}/invoiceLogs`} className="block hover:bg-amber-700 p-2 rounded">
-                  Invoice Logs
+                <Link href={`/${role}/invoiceLogs`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                  <FileText className="w-5 h-5" /> Invoice Logs
                 </Link>
               </li>
               <li>
-                <Link href={`/${role}/maintenanceLogs`} className="block hover:bg-amber-700 p-2 rounded">
-                  Maintenance
+                <Link href={`/${role}/maintenanceLogs`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                  <ClipboardList className="w-5 h-5" /> Maintenance
                 </Link>
               </li>
               <li>
-                <Link href={`/${role}/auditLogs`} className="block hover:bg-amber-700 p-2 rounded">
-                  Audit
+                <Link href={`/${role}/auditLogs`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                  <UserCog className="w-5 h-5" /> Audit
                 </Link>
               </li>
               <li>
-                <Link href={`/${role}/fileReports`} className="block hover:bg-amber-700 p-2 rounded">
-                  File Reports
+                <Link href={`/${role}/fileReports`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                  <FileArchive className="w-5 h-5" /> File Reports
                 </Link>
               </li>
             </ul>
           </li>
         </ul>
       </nav>
+
+      {/* Footer */}
+      <div className="mt-8 text-center text-xs text-gray-400">
+        © 2025 Skyweb — Motorpool System
+      </div>
     </aside>
   );
 }

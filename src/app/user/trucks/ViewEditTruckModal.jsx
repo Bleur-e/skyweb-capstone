@@ -32,10 +32,7 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, drivers, onEdit, onArchive
     drivers.find((d) => d.driver_id === editableTruckData.driver)?.name ||
     editableTruckData.driver;
 
-  const nextChangeOil =
-    truck.last_change_oil_odometer && truck.truck_specs?.change_oil_interval
-      ? truck.last_change_oil_odometer + truck.truck_specs.change_oil_interval
-      : null;
+  const nextChangeOil = truck.next_change_oil_odometer || null;
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50">

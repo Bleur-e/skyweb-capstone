@@ -176,7 +176,7 @@ const TrucksPage = () => {
               ].map((head) => (
                 <th
                   key={head}
-                  className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase"
+                  className="px-5 py-3 border-b-2 border-blue-500 bg-blue-400 text-left text-xs font-semibold text-gray-600 uppercase"
                 >
                   {head}
                 </th>

@@ -325,7 +325,7 @@ const SalesInvoiceForm = () => {
             <input type="number" name="total_amount" placeholder="Total" value={item.total_amount} readOnly className="border p-2 rounded bg-gray-100 text-gray-600" />
             <div className="flex items-center">
               <input type="checkbox" name="add_to_inventory" checked={item.add_to_inventory} onChange={(e) => handleItemChange(index, e)} className="mt-2" />
-              <span className="ml-1 text-xs">Add to Inventory</span>
+              <span className="ml-1 text-xs text-gray-600">Add to Inventory</span>
             </div>
             <button type="button" onClick={() => handleRemoveItem(index)} className="text-red-500">Remove</button>
           </div>

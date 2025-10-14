@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import NotificationDropdown from 'components/notificationDropdown';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { handleLogout } from 'utils/logout';
 
 export default function Topbar() {
   const [currentUser, setCurrentUser] = useState(null);
+  const router = useRouter();
 
   useEffect(() => {
-    // ✅ Load from localStorage (what you saved in loginForm)
     const storedUser = localStorage.getItem('currentUser');
     if (storedUser) {
       try {
@@ -18,7 +20,6 @@ export default function Topbar() {
       }
     }
 
-    // ✅ Menu toggle logic
     const userMenuButton = document.getElementById('user-menu-button');
     const userMenu = document.getElementById('user-menu');
 
@@ -50,15 +51,14 @@ export default function Topbar() {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="text-lg font-semibold text-white hidden lg:inline">Skyland Motorpool</span>
+        <span className="text-lg font-semibold text-white hidden lg:inline">
+          Skyland Motorpool
+        </span>
       </div>
 
       {/* Right side */}
       <div className="flex items-center space-x-6">
-        {/* ✅ Pass currentUser from localStorage */}
-        {currentUser && (
-          <NotificationDropdown currentUser={currentUser} />
-        )}
+        {currentUser && <NotificationDropdown currentUser={currentUser} />}
 
         <div className="relative">
           <button id="user-menu-button" className="flex items-center text-sm focus:outline-none">
@@ -73,9 +73,24 @@ export default function Topbar() {
           </button>
 
           <div id="user-menu" className="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-20">
-            <Link href="/user/profilePage" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Profile</Link>
-            <Link href="/user/settings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</Link>
-            <a href="#" className="block px-4 py-2 text-sm text-red-600 hover:bg-red-100">Logout</a>
+            <Link
+              href="/ProfilePage"
+              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              Profile
+            </Link>
+            <Link
+              href="/Settings"
+              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              Settings
+            </Link>
+            <button
+              onClick={() => handleLogout(router)}
+              className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-100"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>

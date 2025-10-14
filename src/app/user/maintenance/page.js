@@ -135,7 +135,10 @@ const MaintenancePage = () => {
               alert(`✅ Completed! (No interval found for spec_id ${truck.spec_id})`);
             } else {
               const currentOdo = truck.current_odometer || 0;
-              const nextOdo = currentOdo + spec.change_oil_interval;
+              // Convert the interval (which is in km) into miles
+              const intervalInMiles = spec.change_oil_interval / 1.60934;
+              // Correctly compute the next change oil odometer in miles
+              const nextOdo = currentOdo + intervalInMiles;
               const { error: truckError } = await supabase
                 .from('trucks')
                 .update({
@@ -321,7 +324,7 @@ const MaintenancePage = () => {
                     <p className="text-gray-600">Date: {new Date(m.date).toLocaleDateString()}</p>
                     <p className="text-gray-600">Status: <span className="text-amber-600">{m.status}</span></p>
                     {m.maintenance_mechanics?.length > 0 && (
-                      <p>Mechanics: {m.maintenance_mechanics.map(mm => mm.mechanics.name).join(', ')}</p>
+                      <p className="text-gray-600">Mechanics: {m.maintenance_mechanics.map(mm => mm.mechanics.name).join(', ')}</p>
                     )}
 
                     <div className="flex gap-3 mt-4">
