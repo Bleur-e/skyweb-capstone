@@ -14,7 +14,7 @@ const UserRequestLogsPage = () => {
   // Fetch all requests for current user
   useEffect(() => {
     const fetchRequests = async () => {
-      const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
       if (!storedUser) return;
 
       // Fetch maintenance requests

@@ -11,7 +11,7 @@ export default function Topbar() {
   const router = useRouter();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
+    const storedUser = sessionStorage.getItem('currentUser');
     if (storedUser) {
       try {
         setCurrentUser(JSON.parse(storedUser));
@@ -42,23 +42,35 @@ export default function Topbar() {
     };
   }, []);
 
+  // Enhanced logout function for Topbar
+  const handleTopbarLogout = () => {
+    // Clear local state first
+    setCurrentUser(null);
+    
+    // Close any open menus
+    const userMenu = document.getElementById('user-menu');
+    if (userMenu) {
+      userMenu.classList.add('hidden');
+    }
+    
+    // Call your existing logout function
+    handleLogout(router);
+  };
+
   // Check if user should see accounts section
   const shouldShowAccountsSection = () => {
     if (!currentUser) return false;
     
     // Adjust these conditions based on your user role structure
-    // Example 1: Check for specific roles
-    const adminRoles = ['admin', 'superadmin', 'manager']; // Add your admin roles here
+    const adminRoles = ['admin', 'superadmin', 'manager'];
     if (currentUser.role && adminRoles.includes(currentUser.role)) {
       return true;
     }
     
-    // Example 2: Check for specific permissions
     if (currentUser.permissions && currentUser.permissions.includes('manage_accounts')) {
       return true;
     }
     
-    // Example 3: Check user type or isAdmin flag
     if (currentUser.user_type === 'admin' || currentUser.isAdmin) {
       return true;
     }
@@ -121,7 +133,7 @@ export default function Topbar() {
 
             <div className="border-t border-gray-100">
               <button
-                onClick={() => handleLogout(router)}
+                onClick={handleTopbarLogout} /* ← Use the enhanced function */
                 className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-100"
               >
                 Logout

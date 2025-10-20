@@ -6,6 +6,7 @@ import DeployTruckModal from "./DeployTruckModal";
 import supabase from "../../../supabaseClient";
 import ConfirmPopup from "../../../components/ConfirmPopup";
 
+
 // Enhanced Alert Popup (keep your existing one)
 const AlertPopup = ({ message, onClose }) => (
   <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
@@ -32,6 +33,7 @@ const AlertPopup = ({ message, onClose }) => (
 );
 
 const TrucksPage = () => {
+
   const [trucks, setTrucks] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -57,12 +59,14 @@ const TrucksPage = () => {
     setShowAlert(false);
     setAlertMessage("");
   };
+  
 
+  
   // ✅ Fetch current logged-in user
   useEffect(() => {
     const getCurrentUser = () => {
       try {
-        const storedUser = localStorage.getItem("currentUser");
+        const storedUser = sessionStorage.getItem("currentUser");
         if (!storedUser) return null;
         
         const user = JSON.parse(storedUser);

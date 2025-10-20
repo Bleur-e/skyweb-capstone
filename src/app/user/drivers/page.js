@@ -29,7 +29,7 @@ const DriverPage = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
     if (storedUser) setCurrentUser(storedUser);
     fetchDrivers();
   }, []);

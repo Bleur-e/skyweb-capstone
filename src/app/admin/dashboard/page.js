@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 export default function AdminDashboard({ children }) {
   const router = useRouter();
   useEffect(() => {
-    const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
     if (!currentUser) {
       router.push("/");
       return;

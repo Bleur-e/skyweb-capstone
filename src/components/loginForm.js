@@ -27,44 +27,40 @@ export default function LoginForm() {
   const [isPowerFormFocused, setIsPowerFormFocused] = useState(false);
   const router = useRouter();
 
-  // Enhanced currentUser storage helper
-  const storeCurrentUser = (userData) => {
-    const safeUser = {
-      id: userData.id,
-      username: userData.username,
-      full_name: userData.full_name,
-      role: userData.role,
-      account_photo: userData.account_photo || null,
-      isPowerUser: userData.isPowerUser || false,
-      // Add timestamp for validation
-      loginTime: new Date().toISOString()
-    };
-    localStorage.setItem("currentUser", JSON.stringify(safeUser));
-    return safeUser;
+  // Enhanced currentUser storage helper using sessionStorage
+const storeCurrentUser = (userData) => {
+  const safeUser = {
+    id: userData.id,
+    username: userData.username,
+    full_name: userData.full_name,
+    role: userData.role,
+    account_photo: userData.account_photo || null,
+    isPowerUser: userData.isPowerUser || false,
+    loginTime: new Date().toISOString(), // timestamp for validation
   };
+  sessionStorage.setItem("currentUser", JSON.stringify(safeUser));
+  return safeUser;
+};
 
-  // Enhanced get current user helper
-  const getCurrentUser = () => {
-    try {
-      const storedUser = localStorage.getItem("currentUser");
-      if (!storedUser) return null;
-      
-      const user = JSON.parse(storedUser);
-      
-      // Validate user structure
-      if (!user.id || !user.role) {
-        console.warn('Invalid user data in localStorage');
-        localStorage.removeItem("currentUser");
-        return null;
-      }
-      
-      return user;
-    } catch (error) {
-      console.error('Error getting current user:', error);
-      localStorage.removeItem("currentUser");
+// Enhanced get current user helper using sessionStorage
+const getCurrentUser = () => {
+  try {
+    const storedUser = sessionStorage.getItem("currentUser");
+    if (!storedUser) return null;
+
+    const user = JSON.parse(storedUser);
+    if (!user.id || !user.role) {
+      console.warn("Invalid user data in sessionStorage");
+      sessionStorage.removeItem("currentUser");
       return null;
     }
-  };
+    return user;
+  } catch (error) {
+    console.error("Error getting current user:", error);
+    sessionStorage.removeItem("currentUser");
+    return null;
+  }
+};
 
   // Check if user is already logged in on component mount
   useEffect(() => {

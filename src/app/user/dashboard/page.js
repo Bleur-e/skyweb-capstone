@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import supabase from '../../../supabaseClient';
 
 export default function UserDashboard({ children }) {
+
   const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
@@ -23,8 +24,10 @@ export default function UserDashboard({ children }) {
   const [scheduledMaintenance, setScheduledMaintenance] = useState([]);
   const [scheduledLoading, setScheduledLoading] = useState(false);
 
+   
+
   useEffect(() => {
-    const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
     if (!currentUser) {
       router.push("/");
       return;
@@ -38,6 +41,7 @@ export default function UserDashboard({ children }) {
     fetchAllMaintenanceData();
   }, [router]);
 
+  
   // Fetch graph data when analytics tab is active or time range changes
   useEffect(() => {
     if (activeTab === 'analytics') {

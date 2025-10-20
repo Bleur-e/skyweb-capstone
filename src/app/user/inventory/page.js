@@ -29,7 +29,7 @@ const InventoryPage = () => {
 
   // Load current user
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
     if (storedUser) setCurrentUser(storedUser);
   }, []);
 

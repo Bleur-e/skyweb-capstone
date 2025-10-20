@@ -24,6 +24,8 @@ const MaintenancePage = () => {
   const [mechanicList, setMechanicList] = useState([{ mechanic_id: '' }]);
   const [itemList, setItemList] = useState([{ item_id: '', quantity: 1 }]);
 
+ 
+
   useEffect(() => {
     fetchTrucks();
     fetchMechanics();
@@ -200,7 +202,7 @@ const MaintenancePage = () => {
     }
 
     try {
-      const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
       if (!storedUser?.id) {
         showAlert("You must be logged in to mark maintenance as done.", 'error');
         return;

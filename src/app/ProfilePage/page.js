@@ -16,7 +16,7 @@ export default function ProfilePage() {
   const router = useRouter();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
+    const storedUser = sessionStorage.getItem('currentUser');
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
       fetchUserData(parsedUser.username);

@@ -24,13 +24,13 @@ const SalesInvoiceForm = () => {
     { category: '', item_name: '', item_id: '', quantity: 0, unit_price: 0, item_discount: 0, total_amount: 0, add_to_inventory: false }
   ]);
 
-  // Load user from localStorage
+  // Load user from sessionStorage
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
     if (storedUser && storedUser.id) {
       setCurrentUser(storedUser);
     } else {
-      console.warn("User not found in localStorage or user ID is missing for Sales Invoice.");
+      console.warn("User not found in sessionStorage or user ID is missing for Sales Invoice.");
     }
   }, []);
 
