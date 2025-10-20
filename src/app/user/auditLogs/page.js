@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import supabase from '../../../supabaseClient';
+import { Archive, Delete } from 'lucide-react';
 
 const AuditLogsPage = () => {
   const [logs, setLogs] = useState([]);
@@ -30,15 +31,20 @@ const AuditLogsPage = () => {
   };
 
   // Color mapping for actions
-  const actionColors = {
-    Login: 'text-blue-600',
-    Logout: 'text-gray-600',
-    Add: 'text-green-600',
-    Edit: 'text-yellow-600',
-    Delete: 'text-red-600',
-    Approve: 'text-green-700',
-    Decline: 'text-red-700',
-  };
+ const actionColors = {
+  Login: 'text-blue-600',
+  Logout: 'text-gray-600',
+  Add: 'text-green-600',
+  Edit: 'text-yellow-600',
+  Archive: 'text-red-600',        // This will now show for archive actions
+  Delete: 'text-red-700',         // Keep for other delete operations
+  Restored: 'text-green-700',
+  Approve: 'text-green-700',
+  Decline: 'text-red-700',
+  Scheduled: 'text-yellow-600',
+  Completed: 'text-green-600',
+  Canceled: 'text-red-600',
+};
 
   return (
     <main className="p-6 flex-1 bg-white rounded-lg shadow-md">

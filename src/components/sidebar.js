@@ -9,6 +9,7 @@ import {
   FileText,
   ClipboardList,
   ClipboardCheck,
+  Trash2Icon,
   FileChartColumn,
   FileArchive,
   UserCog,
@@ -30,7 +31,7 @@ export default function Sidebar({ role }) {
 
   // 🎯 Conditional links for Admin
   const isAdmin = role?.toLowerCase() === 'admin';
-
+  const isUser = role?.toLowerCase() === 'user';
   return (
     <aside className="bg-gradient-to-b from-blue-900 to-blue-950 text-white w-64 min-h-screen p-4 shadow-xl flex flex-col">
       <div className="text-center mb-8">
@@ -113,6 +114,15 @@ export default function Sidebar({ role }) {
               <ClipboardCheck className="w-5 h-5" /> Request Page
             </Link>
           </li>
+
+            {/* Archives (Hidden for user) */}
+          {!isUser && (
+            <li>
+              <Link href={`/${role}/archives`} className="flex items-center gap-3 p-2 rounded hover:bg-amber-600 transition">
+                <Trash2Icon className="w-5 h-5" /> Archives
+              </Link>
+            </li>
+          )}
 
           {/* Logs Section */}
           <li>

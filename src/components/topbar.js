@@ -42,6 +42,30 @@ export default function Topbar() {
     };
   }, []);
 
+  // Check if user should see accounts section
+  const shouldShowAccountsSection = () => {
+    if (!currentUser) return false;
+    
+    // Adjust these conditions based on your user role structure
+    // Example 1: Check for specific roles
+    const adminRoles = ['admin', 'superadmin', 'manager']; // Add your admin roles here
+    if (currentUser.role && adminRoles.includes(currentUser.role)) {
+      return true;
+    }
+    
+    // Example 2: Check for specific permissions
+    if (currentUser.permissions && currentUser.permissions.includes('manage_accounts')) {
+      return true;
+    }
+    
+    // Example 3: Check user type or isAdmin flag
+    if (currentUser.user_type === 'admin' || currentUser.isAdmin) {
+      return true;
+    }
+    
+    return false;
+  };
+
   return (
     <header className="bg-blue-900 shadow px-6 py-3 flex justify-between items-center z-10">
       <div className="flex items-center space-x-4">
@@ -79,18 +103,30 @@ export default function Topbar() {
             >
               Profile
             </Link>
-            <Link
-              href="/Settings"
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-            >
-              Settings
-            </Link>
-            <button
-              onClick={() => handleLogout(router)}
-              className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-100"
-            >
-              Logout
-            </button>
+            
+            {/* Accounts Section - Conditionally rendered */}
+            {shouldShowAccountsSection() && (
+              <div className="border-t border-gray-100">
+                <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Accounts
+                </div>
+                <Link
+                  href="/account-management"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 pl-6"
+                >
+                  Account Management
+                </Link>
+              </div>
+            )}
+
+            <div className="border-t border-gray-100">
+              <button
+                onClick={() => handleLogout(router)}
+                className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-100"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </div>

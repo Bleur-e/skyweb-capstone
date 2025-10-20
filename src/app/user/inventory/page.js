@@ -8,7 +8,9 @@ const InventoryPage = () => {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   // For Add Item Modal
   const [addCategory, setAddCategory] = useState('');
@@ -19,6 +21,11 @@ const InventoryPage = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editItemId, setEditItemId] = useState('');
   const [editQuantity, setEditQuantity] = useState(0);
+
+  // For Archive Item Modal
+  const [archiveItemId, setArchiveItemId] = useState('');
+  const [archiveItemName, setArchiveItemName] = useState('');
+  const [archiveCategory, setArchiveCategory] = useState('');
 
   // Load current user
   useEffect(() => {
@@ -31,12 +38,20 @@ const InventoryPage = () => {
   }, []);
 
   const fetchInventory = async () => {
-    const { data, error } = await supabase.from('inventory').select('*');
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('is_archived', false)
+      .order('category', { ascending: true })
+      .order('item_name', { ascending: true });
+
     if (error) {
       console.error('Error fetching inventory:', error);
     } else {
       setItems(data);
     }
+    setLoading(false);
   };
 
   // Helper for logging actions
@@ -71,13 +86,13 @@ const InventoryPage = () => {
 
   const displayItems = Object.values(groupedItems).map((item) => {
     let status = 'In Stock';
-    let statusColor = 'text-green-500';
+    let statusColor = 'bg-green-100 text-green-800';
     if (item.quantity === 0) {
       status = 'Out of Stock';
-      statusColor = 'text-red-500';
+      statusColor = 'bg-red-100 text-red-800';
     } else if (item.quantity < 5) {
       status = 'Low Stock';
-      statusColor = 'text-yellow-500';
+      statusColor = 'bg-yellow-100 text-yellow-800';
     }
     return {
       ...item,
@@ -101,6 +116,7 @@ const InventoryPage = () => {
       .select('*')
       .eq('item_name', addItemName)
       .eq('category', addCategory)
+      .eq('is_archived', false)
       .single();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
@@ -140,6 +156,7 @@ const InventoryPage = () => {
           item_name: addItemName,
           category: addCategory,
           quantity: Number(addQuantity),
+          is_archived: false,
         },
       ]);
 
@@ -223,119 +240,218 @@ const InventoryPage = () => {
     fetchInventory();
   };
 
-  // Delete Item Logic
-  const handleDeleteItem = async (itemId, itemName, category) => {
-    if (!window.confirm(`Delete ${itemName} (${category})?`)) return;
+  // Archive Item Logic
+  const handleArchiveItem = async (itemId, itemName, category) => {
+    setArchiveItemId(itemId);
+    setArchiveItemName(itemName);
+    setArchiveCategory(category);
+    setShowArchiveModal(true);
+  };
 
-    const { error } = await supabase.from('inventory').delete().eq('item_id', itemId);
+  const confirmArchive = async () => {
+    if (!archiveItemId) return;
+
+    const { error } = await supabase
+      .from('inventory')
+      .update({ 
+        is_archived: true,
+        archived_at: new Date().toISOString()
+      })
+      .eq('item_id', archiveItemId);
+
     if (error) {
-      console.error('Error deleting item:', error);
-      alert('Error deleting item.');
+      console.error('Error archiving item:', error);
+      alert('Error archiving item.');
       return;
     }
 
     await logAction(
       currentUser,
-      'Delete',
+      'Archive',
       'inventory',
-      `Deleted item ${itemName} (${category}).`
+      `Archived item ${archiveItemName} (${archiveCategory}).`
     );
 
+    setShowArchiveModal(false);
+    setArchiveItemId('');
+    setArchiveItemName('');
+    setArchiveCategory('');
     fetchInventory();
   };
 
+  const cancelArchive = () => {
+    setShowArchiveModal(false);
+    setArchiveItemId('');
+    setArchiveItemName('');
+    setArchiveCategory('');
+  };
+
   return (
-    <main className="flex-1 p-6">
-      <h2 className="text-3xl font-bold text-gray-800 mb-4">Inventory</h2>
-      <p className="text-gray-600 mb-6">Manage your inventory system here.</p>
-
-      {/* Action Buttons */}
-      <div className="mb-4 flex space-x-4">
-        <button
-          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-          onClick={() => setShowAddModal(true)}
-        >
-          Add Items
-        </button>
-        <button
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-          onClick={() => setShowEditModal(true)}
-        >
-          Edit Stock
-        </button>
+    <main className="flex-1 p-6 bg-gray-50 min-h-screen">
+      {/* Header Section */}
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">Inventory Management</h2>
+        <p className="text-gray-600">Manage your inventory items and stock levels</p>
       </div>
 
-      {/* Category Filter */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700">Filter by Category</label>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="mt-1 block w-64 px-4 py-2 border border-gray-300 rounded-md text-gray-700"
-        >
-          <option value="">All Categories</option>
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+      {/* Action Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-green-50 text-green-600 mr-4">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Add Items</h3>
+              <p className="text-gray-600 text-sm">Add new inventory items</p>
+            </div>
+          </div>
+          <button
+            className="w-full mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
+            onClick={() => setShowAddModal(true)}
+          >
+            Add Items
+          </button>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-blue-50 text-blue-600 mr-4">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Adjust Stock</h3>
+              <p className="text-gray-600 text-sm">Update item quantities</p>
+            </div>
+          </div>
+          <button
+            className="w-full mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            onClick={() => setShowEditModal(true)}
+          >
+            Edit Stock
+          </button>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-purple-50 text-purple-600 mr-4">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Inventory Status</h3>
+              <p className="text-gray-600 text-sm">{displayItems.length} active items</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Inventory Table */}
-      <div className="overflow-x-auto bg-white rounded-lg shadow">
-        <table className="min-w-full bg-white">
-          <thead>
-            <tr className="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-              <th className="py-3 px-6 text-left">Item</th>
-              <th className="py-3 px-6 text-left">Category</th>
-              <th className="py-3 px-6 text-left">Quantity</th>
-              <th className="py-3 px-6 text-left">Status</th>
-              <th className="py-3 px-6 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="text-gray-600 text-sm font-light">
-            {displayItems
-              .filter((item) => !categoryFilter || item.category === categoryFilter)
-              .map((item, index) => (
-                <tr key={index} className="border-b border-gray-200 hover:bg-gray-100">
-                  <td className="py-3 px-6 text-left">{item.item_name}</td>
-                  <td className="py-3 px-6 text-left">{item.category}</td>
-                  <td className="py-3 px-6 text-left">{item.quantity}</td>
-                  <td className={`py-3 px-6 text-left ${item.statusColor}`}>
-                    {item.status}
-                  </td>
-                  <td className="py-3 px-6">
-                    <button
-                      className="text-red-600 hover:underline"
-                      onClick={() =>
-                        handleDeleteItem(item.item_id, item.item_name, item.category)
-                      }
-                    >
-                      Delete
-                    </button>
+      {/* Filters and Table Section */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <h3 className="text-xl font-semibold text-gray-800">Inventory Items</h3>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Category</label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Inventory Table */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="py-4 px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                <th className="py-4 px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                <th className="py-4 px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="py-4 px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="py-4 px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {loading ? (
+                <tr>
+                  <td colSpan="5" className="py-8 px-6 text-center text-gray-500">
+                    <div className="flex justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    </div>
+                    <p className="mt-2">Loading inventory...</p>
                   </td>
                 </tr>
-              ))}
-          </tbody>
-        </table>
+              ) : displayItems.filter((item) => !categoryFilter || item.category === categoryFilter).length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="py-8 px-6 text-center text-gray-500">
+                    No inventory items found
+                  </td>
+                </tr>
+              ) : (
+                displayItems
+                  .filter((item) => !categoryFilter || item.category === categoryFilter)
+                  .map((item, index) => (
+                    <tr key={index} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-4 px-6 text-sm font-medium text-gray-900">{item.item_name}</td>
+                      <td className="py-4 px-6 text-sm text-gray-700">{item.category}</td>
+                      <td className="py-4 px-6 text-sm text-gray-700 font-semibold">{item.quantity}</td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${item.statusColor}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <button
+                          className="text-purple-600 hover:text-purple-800 text-sm font-medium transition-colors"
+                          onClick={() =>
+                            handleArchiveItem(item.item_id, item.item_name, item.category)
+                          }
+                        >
+                          Archive
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Add Item Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-            <h3 className="text-xl font-bold mb-4 text-green-700">Add Item</h3>
-            <form onSubmit={handleAddSubmit} className="space-y-4">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-800">Add New Item</h3>
+            </div>
+            <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Category</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
                 <select
                   value={addCategory}
                   onChange={(e) => {
                     setAddCategory(e.target.value);
                     setAddItemName('');
                   }}
-                  className="w-full border rounded px-3 py-2 text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   required
                 >
                   <option value="">Select Category</option>
@@ -347,17 +463,17 @@ const InventoryPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Item Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Item Name</label>
                 <input
                   type="text"
                   value={addItemName}
                   onChange={(e) => setAddItemName(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Quantity to Add
                 </label>
                 <input
@@ -365,23 +481,23 @@ const InventoryPage = () => {
                   min="1"
                   value={addQuantity}
                   onChange={(e) => setAddQuantity(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   required
                 />
               </div>
-              <div className="flex justify-end space-x-2 mt-4">
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
                 >
-                  Save
+                  Add Item
                 </button>
               </div>
             </form>
@@ -391,19 +507,21 @@ const InventoryPage = () => {
 
       {/* Edit Stock Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-            <h3 className="text-xl font-bold mb-4 text-blue-700">Edit Stock</h3>
-            <form onSubmit={handleEditSubmit} className="space-y-4">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-800">Adjust Stock Level</h3>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Category</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
                 <select
                   value={editCategory}
                   onChange={(e) => {
                     setEditCategory(e.target.value);
                     setEditItemId('');
                   }}
-                  className="w-full border rounded px-3 py-2 text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
                 >
                   <option value="">Select Category</option>
@@ -415,11 +533,11 @@ const InventoryPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Item to Edit</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Item to Edit</label>
                 <select
                   value={editItemId}
                   onChange={(e) => setEditItemId(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
                   disabled={!editCategory}
                 >
@@ -428,13 +546,13 @@ const InventoryPage = () => {
                     .filter((it) => it.category === editCategory)
                     .map((it) => (
                       <option key={it.item_id} value={it.item_id}>
-                        {it.item_name} (ID: {it.item_id}, Current Qty: {it.quantity})
+                        {it.item_name} (Current: {it.quantity})
                       </option>
                     ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Quantity to Reduce
                 </label>
                 <input
@@ -442,26 +560,59 @@ const InventoryPage = () => {
                   min="1"
                   value={editQuantity}
                   onChange={(e) => setEditQuantity(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-gray-700"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
                 />
               </div>
-              <div className="flex justify-end space-x-2 mt-4">
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                 >
-                  Save
+                  Update Stock
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-800">Archive Item</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to archive <strong>{archiveItemName}</strong> from <strong>{archiveCategory}</strong>?
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                Archived items will be removed from active inventory but preserved in the system records.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={cancelArchive}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmArchive}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                >
+                  Archive Item
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
