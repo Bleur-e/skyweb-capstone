@@ -1,8 +1,10 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../supabaseClient';
+import { useRouter } from 'next/navigation';
 
 export default function AdminRequestPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('funds'); // 'funds' or 'profile'
   const [requests, setRequests] = useState([]);
   const [profileRequests, setProfileRequests] = useState([]);
@@ -13,18 +15,50 @@ export default function AdminRequestPage() {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
   const [currentAdmin, setCurrentAdmin] = useState(null);
+  
+  // Notification states
+  const [notification, setNotification] = useState({
+    show: false,
+    type: '', // 'success' or 'error'
+    message: '',
+    title: ''
+  });
 
   // Get current admin user
   useEffect(() => {
-    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-    setCurrentAdmin(storedUser);
-  }, []);
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentAdmin(currentUser);
+        }, [router]);
 
   // Fetch all requests with related data
   useEffect(() => {
     fetchRequests();
     fetchProfileRequests();
   }, []);
+
+  // Auto-hide notification after 5 seconds
+  useEffect(() => {
+    if (notification.show) {
+      const timer = setTimeout(() => {
+        setNotification(prev => ({ ...prev, show: false }));
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [notification.show]);
+
+  const showNotification = (type, title, message) => {
+    setNotification({
+      show: true,
+      type,
+      title,
+      message
+    });
+  };
 
   const fetchRequests = async () => {
     try {
@@ -49,7 +83,7 @@ export default function AdminRequestPage() {
 
       if (requestsError) {
         console.error('Error fetching requests:', requestsError);
-        alert('Error loading requests: ' + requestsError.message);
+        showNotification('error', 'Error', 'Failed to load fund requests: ' + requestsError.message);
         return;
       }
 
@@ -84,7 +118,7 @@ export default function AdminRequestPage() {
       setRequests(formattedRequests);
     } catch (error) {
       console.error('Error fetching data:', error);
-      alert('Error loading requests data');
+      showNotification('error', 'Error', 'Failed to load requests data');
     } finally {
       setLoading(false);
     }
@@ -105,14 +139,14 @@ export default function AdminRequestPage() {
 
       if (profileError) {
         console.error('Error fetching profile requests:', profileError);
-        alert('Error loading profile requests: ' + profileError.message);
+        showNotification('error', 'Error', 'Failed to load profile requests: ' + profileError.message);
         return;
       }
 
       setProfileRequests(profileRequestsData || []);
     } catch (error) {
       console.error('Error fetching profile data:', error);
-      alert('Error loading profile requests data');
+      showNotification('error', 'Error', 'Failed to load profile requests data');
     } finally {
       setProfileLoading(false);
     }
@@ -137,14 +171,19 @@ export default function AdminRequestPage() {
 
       if (error) {
         console.error('Error updating request:', error);
-        alert('Error updating request status: ' + error.message);
+        showNotification('error', 'Error', 'Failed to update request status: ' + error.message);
         return;
       }
 
       // Remove the request from local state immediately
       setRequests(prev => prev.filter(req => req.request_id !== requestId));
       
-      alert(`Request ${action.toLowerCase()} successfully!`);
+      // Show success notification
+      if (action === 'Approved') {
+        showNotification('success', 'Request Approved', 'Fund request has been approved successfully!');
+      } else {
+        showNotification('success', 'Request Declined', 'Fund request has been declined successfully!');
+      }
       
       // Close modal if open
       if (isModalOpen) {
@@ -152,7 +191,7 @@ export default function AdminRequestPage() {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error updating request status');
+      showNotification('error', 'Error', 'Failed to update request status');
     }
   };
 
@@ -167,7 +206,7 @@ export default function AdminRequestPage() {
 
       if (fetchError) {
         console.error('Error fetching profile request:', fetchError);
-        alert('Error fetching profile request details');
+        showNotification('error', 'Error', 'Failed to fetch profile request details');
         return;
       }
 
@@ -187,7 +226,7 @@ export default function AdminRequestPage() {
 
         if (updateError) {
           console.error('Error updating user profile:', updateError);
-          alert('Error updating user profile: ' + updateError.message);
+          showNotification('error', 'Error', 'Failed to update user profile: ' + updateError.message);
           return;
         }
       }
@@ -203,14 +242,19 @@ export default function AdminRequestPage() {
 
       if (statusError) {
         console.error('Error updating profile request:', statusError);
-        alert('Error updating profile request status: ' + statusError.message);
+        showNotification('error', 'Error', 'Failed to update profile request status: ' + statusError.message);
         return;
       }
 
       // Remove the request from local state immediately
       setProfileRequests(prev => prev.filter(req => req.id !== requestId));
       
-      alert(`Profile update request ${action.toLowerCase()} successfully!`);
+      // Show success notification
+      if (action === 'Approved') {
+        showNotification('success', 'Profile Changes Approved', 'Profile update request has been approved successfully!');
+      } else {
+        showNotification('success', 'Profile Changes Declined', 'Profile update request has been declined successfully!');
+      }
       
       // Close modal if open
       if (isProfileModalOpen) {
@@ -218,7 +262,7 @@ export default function AdminRequestPage() {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error updating profile request status');
+      showNotification('error', 'Error', 'Failed to update profile request status');
     }
   };
 
@@ -243,6 +287,50 @@ export default function AdminRequestPage() {
       <span className={`px-2 py-1 rounded text-sm ${colorClass}`}>
         {status}
       </span>
+    );
+  };
+
+  // Notification component
+  const NotificationPopup = () => {
+    if (!notification.show) return null;
+
+    const bgColor = notification.type === 'success' ? 'bg-green-500' : 'bg-red-500';
+    const icon = notification.type === 'success' ? (
+      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+      </svg>
+    ) : (
+      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+      </svg>
+    );
+
+    return (
+      <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right duration-300">
+        <div className={`${bgColor} text-white px-6 py-4 rounded-lg shadow-lg max-w-sm border-l-4 ${notification.type === 'success' ? 'border-green-400' : 'border-red-400'}`}>
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0 mt-0.5">
+              {icon}
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold text-white text-sm">
+                {notification.title}
+              </h4>
+              <p className="mt-1 text-sm text-white opacity-90">
+                {notification.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setNotification(prev => ({ ...prev, show: false }))}
+              className="flex-shrink-0 text-white hover:text-gray-200 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -300,13 +388,13 @@ export default function AdminRequestPage() {
                       <>
                         <button
                           onClick={() => handleAction(req.request_id, 'Approved')}
-                          className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded"
+                          className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded transition-colors"
                         >
                           Approve
                         </button>
                         <button
                           onClick={() => handleAction(req.request_id, 'Declined')}
-                          className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1 rounded"
+                          className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1 rounded transition-colors"
                         >
                           Decline
                         </button>
@@ -362,12 +450,56 @@ export default function AdminRequestPage() {
                   </td>
                   <td className="py-3 px-4">{req.users?.position || 'N/A'}</td>
                   <td className="py-3 px-4">
-                    <button
-                      onClick={() => handleViewProfileRequest(req)}
-                      className="text-blue-600 hover:underline text-left"
-                    >
-                      View Changes
-                    </button>
+                    <div className="space-y-2 min-w-[200px]">
+                      {/* Show summary of changes */}
+                      <div className="text-sm text-gray-700">
+                        {req.full_name && (
+                          <div className="mb-1">
+                            <span className="font-semibold">Name: </span>
+                            <span className="text-blue-600">{req.full_name}</span>
+                          </div>
+                        )}
+                        {req.position && (
+                          <div className="mb-1">
+                            <span className="font-semibold">Position: </span>
+                            <span className="text-blue-600">{req.position}</span>
+                          </div>
+                        )}
+                        {req.address && (
+                          <div className="mb-1">
+                            <span className="font-semibold">Address: </span>
+                            <span className="text-blue-600">
+                              {req.address.length > 40 ? `${req.address.substring(0, 40)}...` : req.address}
+                            </span>
+                          </div>
+                        )}
+                        {req.contact_no && (
+                          <div className="mb-1">
+                            <span className="font-semibold">Contact: </span>
+                            <span className="text-blue-600">{req.contact_no}</span>
+                          </div>
+                        )}
+                        {req.photo_url && (
+                          <div className="mb-1">
+                            <span className="font-semibold">Profile Image: </span>
+                            <span className="text-blue-600">Updated</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* View Full Details Button */}
+                      <button
+                        onClick={() => handleViewProfileRequest(req)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded transition-colors"
+                      >
+                        View Full Details
+                      </button>
+                      
+                      {/* Show message if no changes */}
+                      {!req.full_name && !req.position && !req.address && !req.contact_no && !req.photo_url && (
+                        <div className="text-gray-500 text-sm italic">No changes requested</div>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     {new Date(req.created_at).toLocaleDateString()}
@@ -380,13 +512,13 @@ export default function AdminRequestPage() {
                       <>
                         <button
                           onClick={() => handleProfileAction(req.id, 'Approved')}
-                          className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded"
+                          className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded transition-colors"
                         >
                           Approve
                         </button>
                         <button
                           onClick={() => handleProfileAction(req.id, 'Declined')}
-                          className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1 rounded"
+                          className="bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1 rounded transition-colors"
                         >
                           Decline
                         </button>
@@ -410,7 +542,10 @@ export default function AdminRequestPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-blue-900 mb-4">Admin Approval Dashboard</h1>
+      {/* Notification Popup */}
+      <NotificationPopup />
+
+      <h1 className="text-2xl font-bold text-blue-900 mb-4">Admin Approval</h1>
 
       {/* Tab Navigation */}
       <div className="mb-6 border-b border-gray-200">
@@ -443,117 +578,119 @@ export default function AdminRequestPage() {
 
       {/* Fund Request Details Modal */}
       {isModalOpen && selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-blue-900 mb-4">
-              Request Details
-            </h3>
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[95vh] overflow-y-auto">
+            <div className="p-6">
+              <h3 className="text-2xl font-bold text-blue-900 mb-4">
+                Request Details
+              </h3>
 
-            {/* Request Info */}
-            <div className="grid grid-cols-2 gap-4 mb-6 text-gray-700">
-              <div>
-                <strong>Request ID:</strong> {selectedRequest.request_id}
+              {/* Request Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-gray-700">
+                <div>
+                  <strong>Request ID:</strong> {selectedRequest.request_id}
+                </div>
+                <div>
+                  <strong>Date:</strong> {new Date(selectedRequest.request_date).toLocaleString()}
+                </div>
+                <div>
+                  <strong>User:</strong> {selectedRequest.user?.name}
+                </div>
+                <div>
+                  <strong>Email:</strong> {selectedRequest.user?.email}
+                </div>
+                <div>
+                  <strong>Truck:</strong> {selectedRequest.plate_number}
+                </div>
+                <div>
+                  <strong>Estimated Cost:</strong> ₱{selectedRequest.estimated_cost || '0'}
+                </div>
+                <div className="md:col-span-2">
+                  <strong>Status:</strong> <StatusBadge status={selectedRequest.status} />
+                </div>
+                {selectedRequest.updated_at && (
+                  <div className="md:col-span-2">
+                    <strong>Last Updated:</strong> {new Date(selectedRequest.updated_at).toLocaleString()}
+                  </div>
+                )}
+                <div className="md:col-span-2">
+                  <strong>Reason:</strong> 
+                  <p className="mt-1 p-3 bg-gray-50 rounded border">{selectedRequest.reason || 'No reason provided'}</p>
+                </div>
               </div>
-              <div>
-                <strong>Date:</strong> {new Date(selectedRequest.request_date).toLocaleString()}
-              </div>
-              <div>
-                <strong>User:</strong> {selectedRequest.user?.name}
-              </div>
-              <div>
-                <strong>Email:</strong> {selectedRequest.user?.email}
-              </div>
-              <div>
-                <strong>Truck:</strong> {selectedRequest.plate_number}
-              </div>
-              <div>
-                <strong>Estimated Cost:</strong> ₱{selectedRequest.estimated_cost || '0'}
-              </div>
-              <div className="col-span-2">
-                <strong>Status:</strong> <StatusBadge status={selectedRequest.status} />
-              </div>
-              {selectedRequest.updated_at && (
-                <div className="col-span-2">
-                  <strong>Last Updated:</strong> {new Date(selectedRequest.updated_at).toLocaleString()}
+
+              {/* Requested Items */}
+              <h4 className="text-lg font-semibold text-gray-800 mb-3">
+                Requested Items
+              </h4>
+              {selectedRequest.request_items && selectedRequest.request_items.length > 0 ? (
+                <table className="w-full border mb-6">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-3 text-left text-gray-700">Item Name</th>
+                      <th className="p-3 text-left text-gray-700">Category</th>
+                      <th className="p-3 text-left text-gray-700">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedRequest.request_items.map((item, index) => (
+                      <tr key={index} className="border-t">
+                        <td className="p-3 text-gray-700">{item.inventory?.item_name || 'N/A'}</td>
+                        <td className="p-3 text-gray-700">{item.inventory?.category || 'N/A'}</td>
+                        <td className="p-3 text-gray-700">{item.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-gray-500 mb-6">No items requested.</p>
+              )}
+
+              {/* Attachment */}
+              {selectedRequest.photo_url && (
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">
+                    Attachment
+                  </h4>
+                  <img
+                    src={selectedRequest.photo_url}
+                    alt="Request Attachment"
+                    className="w-full max-h-[400px] object-contain rounded border"
+                  />
                 </div>
               )}
-              <div className="col-span-2">
-                <strong>Reason:</strong> 
-                <p className="mt-1 p-3 bg-gray-50 rounded border">{selectedRequest.reason || 'No reason provided'}</p>
-              </div>
-            </div>
 
-            {/* Requested Items */}
-            <h4 className="text-lg font-semibold text-gray-800 mb-3">
-              Requested Items
-            </h4>
-            {selectedRequest.request_items && selectedRequest.request_items.length > 0 ? (
-              <table className="w-full border mb-6">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="p-3 text-left text-gray-700">Item Name</th>
-                    <th className="p-3 text-left text-gray-700">Category</th>
-                    <th className="p-3 text-left text-gray-700">Quantity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedRequest.request_items.map((item, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="p-3 text-gray-700">{item.inventory?.item_name || 'N/A'}</td>
-                      <td className="p-3 text-gray-700">{item.inventory?.category || 'N/A'}</td>
-                      <td className="p-3 text-gray-700">{item.quantity}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-gray-500 mb-6">No items requested.</p>
-            )}
+              {/* Action Buttons for Pending Requests */}
+              {selectedRequest.status === 'Pending' && (
+                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mb-4">
+                  <button
+                    onClick={() => {
+                      handleAction(selectedRequest.request_id, 'Approved');
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded font-semibold transition-colors"
+                  >
+                    Approve Request
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleAction(selectedRequest.request_id, 'Declined');
+                    }}
+                    className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded font-semibold transition-colors"
+                  >
+                    Decline Request
+                  </button>
+                </div>
+              )}
 
-            {/* Attachment */}
-            {selectedRequest.photo_url && (
-              <div className="mb-6">
-                <h4 className="text-lg font-semibold text-gray-800 mb-3">
-                  Attachment
-                </h4>
-                <img
-                  src={selectedRequest.photo_url}
-                  alt="Request Attachment"
-                  className="w-full max-h-[400px] object-contain rounded border"
-                />
-              </div>
-            )}
-
-            {/* Action Buttons for Pending Requests */}
-            {selectedRequest.status === 'Pending' && (
-              <div className="flex justify-end space-x-3 mb-4">
+              {/* Close Button */}
+              <div className="flex justify-end">
                 <button
-                  onClick={() => {
-                    handleAction(selectedRequest.request_id, 'Approved');
-                  }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-6 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 font-semibold transition-colors"
                 >
-                  Approve Request
-                </button>
-                <button
-                  onClick={() => {
-                    handleAction(selectedRequest.request_id, 'Declined');
-                  }}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-                >
-                  Decline Request
+                  Close
                 </button>
               </div>
-            )}
-
-            {/* Close Button */}
-            <div className="flex justify-end">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-600"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
@@ -561,109 +698,209 @@ export default function AdminRequestPage() {
 
       {/* Profile Update Request Details Modal */}
       {isProfileModalOpen && selectedProfileRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-blue-900 mb-4">
-              Profile Update Request Details
-            </h3>
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[95vh] overflow-y-auto">
+            <div className="p-6">
+              <h3 className="text-2xl font-bold text-blue-900 mb-6">
+                Profile Update Request Details
+              </h3>
 
-            {/* User Info */}
-            <div className="grid grid-cols-2 gap-4 mb-6 text-gray-700">
-              <div>
-                <strong>Request ID:</strong> {selectedProfileRequest.id}
-              </div>
-              <div>
-                <strong>Date:</strong> {new Date(selectedProfileRequest.created_at).toLocaleString()}
-              </div>
-              <div>
-                <strong>User:</strong> {selectedProfileRequest.users?.full_name}
-              </div>
-              <div>
-                <strong>Email:</strong> {selectedProfileRequest.users?.email}
-              </div>
-              <div className="col-span-2">
-                <strong>Status:</strong> <StatusBadge status={selectedProfileRequest.status} />
-              </div>
-            </div>
-
-            {/* Changes Comparison */}
-            <h4 className="text-lg font-semibold text-gray-800 mb-3">
-              Requested Changes
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Current Profile */}
-              <div>
-                <h5 className="font-semibold text-gray-700 mb-2">Current Profile</h5>
-                <div className="space-y-2 text-sm">
-                  <div><strong>Name:</strong> {selectedProfileRequest.users?.full_name || 'N/A'}</div>
-                  <div><strong>Address:</strong> {selectedProfileRequest.users?.address || 'N/A'}</div>
-                  <div><strong>Contact:</strong> {selectedProfileRequest.users?.contact_no || 'N/A'}</div>
-                  <div><strong>Position:</strong> {selectedProfileRequest.users?.position || 'N/A'}</div>
-                  {selectedProfileRequest.users?.profile_image && (
-                    <div>
-                      <strong>Profile Image:</strong>
-                      <img 
-                        src={selectedProfileRequest.users.profile_image} 
-                        alt="Current profile" 
-                        className="w-20 h-20 rounded-full mt-2 border"
-                      />
-                    </div>
-                  )}
+              {/* User Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 text-gray-700">
+                <div>
+                  <strong className="text-gray-600">Request ID:</strong> 
+                  <div className="mt-1 text-gray-800 font-medium">{selectedProfileRequest.id}</div>
+                </div>
+                <div>
+                  <strong className="text-gray-600">Date Submitted:</strong> 
+                  <div className="mt-1 text-gray-800 font-medium">{new Date(selectedProfileRequest.created_at).toLocaleString()}</div>
+                </div>
+                <div>
+                  <strong className="text-gray-600">User:</strong> 
+                  <div className="mt-1 text-gray-800 font-medium">{selectedProfileRequest.users?.full_name}</div>
+                </div>
+                <div>
+                  <strong className="text-gray-600">Email:</strong> 
+                  <div className="mt-1 text-gray-800 font-medium">{selectedProfileRequest.users?.email}</div>
+                </div>
+                <div className="md:col-span-2">
+                  <strong className="text-gray-600">Status:</strong> 
+                  <div className="mt-1"><StatusBadge status={selectedProfileRequest.status} /></div>
                 </div>
               </div>
 
-              {/* Requested Changes */}
-              <div>
-                <h5 className="font-semibold text-gray-700 mb-2">Requested Changes</h5>
-                <div className="space-y-2 text-sm">
-                  <div><strong>Name:</strong> {selectedProfileRequest.full_name || 'No change'}</div>
-                  <div><strong>Address:</strong> {selectedProfileRequest.address || 'No change'}</div>
-                  <div><strong>Contact:</strong> {selectedProfileRequest.contact_no || 'No change'}</div>
-                  <div><strong>Position:</strong> {selectedProfileRequest.position || 'No change'}</div>
-                  {selectedProfileRequest.photo_url && (
-                    <div>
-                      <strong>New Profile Image:</strong>
-                      <img 
-                        src={selectedProfileRequest.photo_url} 
-                        alt="Requested profile" 
-                        className="w-20 h-20 rounded-full mt-2 border"
-                      />
+              {/* Changes Comparison */}
+              <h4 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">
+                Profile Changes Comparison
+              </h4>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                {/* Current Profile - Made much clearer */}
+                <div className="bg-white border-2 border-gray-300 rounded-lg p-6 shadow-sm">
+                  <h5 className="font-bold text-lg text-gray-800 mb-4 pb-2 border-b-2 border-gray-300 flex items-center">
+                    <span className="bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">1</span>
+                    Current Profile
+                  </h5>
+                  <div className="space-y-4">
+                    {/* Profile Image */}
+                    <div className="flex flex-col items-center mb-4">
+                      {selectedProfileRequest.users?.profile_image ? (
+                        <img 
+                          src={selectedProfileRequest.users.profile_image} 
+                          alt="Current profile" 
+                          className="w-32 h-32 rounded-full object-cover border-4 border-gray-400 shadow-md"
+                        />
+                      ) : (
+                        <div className="w-32 h-32 rounded-full bg-gray-300 border-4 border-gray-400 flex items-center justify-center shadow-md">
+                          <span className="text-gray-600 text-lg font-semibold">No Image</span>
+                        </div>
+                      )}
+                      <span className="text-sm text-gray-500 mt-2 font-medium">Current Profile Image</span>
                     </div>
-                  )}
+
+                    {/* Profile Details */}
+                    <div className="space-y-3">
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Full Name:</strong>
+                        <div className="p-3 bg-gray-100 rounded border border-gray-300 text-gray-800 font-medium">
+                          {selectedProfileRequest.users?.full_name || 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Position:</strong>
+                        <div className="p-3 bg-gray-100 rounded border border-gray-300 text-gray-800 font-medium">
+                          {selectedProfileRequest.users?.position || 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Address:</strong>
+                        <div className="p-3 bg-gray-100 rounded border border-gray-300 text-gray-800 font-medium">
+                          {selectedProfileRequest.users?.address || 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Contact Number:</strong>
+                        <div className="p-3 bg-gray-100 rounded border border-gray-300 text-gray-800 font-medium">
+                          {selectedProfileRequest.users?.contact_no || 'Not set'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requested Changes */}
+                <div className="bg-white border-2 border-blue-300 rounded-lg p-6 shadow-sm">
+                  <h5 className="font-bold text-lg text-gray-800 mb-4 pb-2 border-b-2 border-blue-300 flex items-center">
+                    <span className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">2</span>
+                    Requested Changes
+                  </h5>
+                  <div className="space-y-4">
+                    {/* Profile Image */}
+                    <div className="flex flex-col items-center mb-4">
+                      {selectedProfileRequest.photo_url ? (
+                        <img 
+                          src={selectedProfileRequest.photo_url} 
+                          alt="Requested profile" 
+                          className="w-32 h-32 rounded-full object-cover border-4 border-blue-400 shadow-md"
+                        />
+                      ) : selectedProfileRequest.users?.profile_image ? (
+                        <div className="relative">
+                          <img 
+                            src={selectedProfileRequest.users.profile_image} 
+                            alt="Current profile" 
+                            className="w-32 h-32 rounded-full object-cover border-4 border-gray-300 shadow-md opacity-50"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-gray-500 text-sm font-semibold">No Change</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-32 h-32 rounded-full bg-gray-200 border-4 border-gray-300 flex items-center justify-center shadow-md">
+                          <span className="text-gray-500 text-sm font-semibold">No Image</span>
+                        </div>
+                      )}
+                      <span className="text-sm text-gray-500 mt-2 font-medium">
+                        {selectedProfileRequest.photo_url ? 'New Profile Image' : 'No Change to Image'}
+                      </span>
+                    </div>
+
+                    {/* Requested Details */}
+                    <div className="space-y-3">
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Full Name:</strong>
+                        <div className={`p-3 rounded border font-medium ${
+                          selectedProfileRequest.full_name 
+                            ? 'bg-blue-50 border-blue-300 text-blue-700' 
+                            : 'bg-gray-100 border-gray-300 text-gray-500'
+                        }`}>
+                          {selectedProfileRequest.full_name || 'No change requested'}
+                        </div>
+                      </div>
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Position:</strong>
+                        <div className={`p-3 rounded border font-medium ${
+                          selectedProfileRequest.position 
+                            ? 'bg-blue-50 border-blue-300 text-blue-700' 
+                            : 'bg-gray-100 border-gray-300 text-gray-500'
+                        }`}>
+                          {selectedProfileRequest.position || 'No change requested'}
+                        </div>
+                      </div>
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Address:</strong>
+                        <div className={`p-3 rounded border font-medium ${
+                          selectedProfileRequest.address 
+                            ? 'bg-blue-50 border-blue-300 text-blue-700' 
+                            : 'bg-gray-100 border-gray-300 text-gray-500'
+                        }`}>
+                          {selectedProfileRequest.address || 'No change requested'}
+                        </div>
+                      </div>
+                      <div>
+                        <strong className="text-gray-700 block mb-1">Contact Number:</strong>
+                        <div className={`p-3 rounded border font-medium ${
+                          selectedProfileRequest.contact_no 
+                            ? 'bg-blue-50 border-blue-300 text-blue-700' 
+                            : 'bg-gray-100 border-gray-300 text-gray-500'
+                        }`}>
+                          {selectedProfileRequest.contact_no || 'No change requested'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Action Buttons for Pending Requests */}
-            {selectedProfileRequest.status === 'Pending' && (
-              <div className="flex justify-end space-x-3 mb-4">
+              {/* Action Buttons for Pending Requests */}
+              {selectedProfileRequest.status === 'Pending' && (
+                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 mb-6 pt-6 border-t">
+                  <button
+                    onClick={() => {
+                      handleProfileAction(selectedProfileRequest.id, 'Approved');
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors shadow-md"
+                  >
+                    ✓ Approve All Changes
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleProfileAction(selectedProfileRequest.id, 'Declined');
+                    }}
+                    className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors shadow-md"
+                  >
+                    ✗ Decline Changes
+                  </button>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="flex justify-end pt-4 border-t">
                 <button
-                  onClick={() => {
-                    handleProfileAction(selectedProfileRequest.id, 'Approved');
-                  }}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded font-semibold transition-colors"
                 >
-                  Approve Changes
-                </button>
-                <button
-                  onClick={() => {
-                    handleProfileAction(selectedProfileRequest.id, 'Declined');
-                  }}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-                >
-                  Decline Changes
+                  Close
                 </button>
               </div>
-            )}
-
-            {/* Close Button */}
-            <div className="flex justify-end">
-              <button
-                onClick={() => setIsProfileModalOpen(false)}
-                className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-600"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>

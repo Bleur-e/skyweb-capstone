@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../supabaseClient';
-
+import { useRouter } from 'next/navigation';
 // ---------------- SALES INVOICE FORM ----------------
 const SalesInvoiceForm = () => {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState(null);
   const [inventory, setInventory] = useState([]);
   const [categoryList, setCategoryList] = useState([]);
@@ -26,13 +27,13 @@ const SalesInvoiceForm = () => {
 
   // Load user from sessionStorage
   useEffect(() => {
-    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-    if (storedUser && storedUser.id) {
-      setCurrentUser(storedUser);
-    } else {
-      console.warn("User not found in sessionStorage or user ID is missing for Sales Invoice.");
-    }
-  }, []);
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentUser(currentUser);
+        }, [router]);
 
   // Fetch inventory for dropdowns
   useEffect(() => {

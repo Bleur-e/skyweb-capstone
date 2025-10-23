@@ -1,9 +1,28 @@
-
 // UserDashboard.js (client component)
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import supabase from '../../../supabaseClient';
+import { Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 export default function UserDashboard({ children }) {
 
@@ -23,8 +42,6 @@ export default function UserDashboard({ children }) {
   const [showScheduledList, setShowScheduledList] = useState(false);
   const [scheduledMaintenance, setScheduledMaintenance] = useState([]);
   const [scheduledLoading, setScheduledLoading] = useState(false);
-
-   
 
   useEffect(() => {
     const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
@@ -59,6 +76,13 @@ export default function UserDashboard({ children }) {
     setTimeout(() => {
       setNotifications(prev => prev.filter(notif => notif.id !== id));
     }, 5000);
+  };
+
+  // Check if date has reached maintenance limit (5 per day)
+  const checkMaintenanceLimit = (date) => {
+    const dateStr = new Date(date).toISOString().split('T')[0];
+    const maintenanceCount = maintenanceData[dateStr] ? maintenanceData[dateStr].length : 0;
+    return maintenanceCount >= 5;
   };
 
   // BACKEND FUNCTION: Fetch scheduled maintenance list
@@ -97,7 +121,9 @@ export default function UserDashboard({ children }) {
         date: item.date,
         plate_number: item.trucks?.plate_number,
         current_odometer: item.trucks?.current_odometer,
-        mechanics: item.maintenance_mechanics?.map(mm => mm.mechanics) || []
+        mechanics: item.maintenance_mechanics?.map(mm => mm.mechanics) || [],
+        driver_details: item.driver_details,
+        mechanic_name: item.mechanic_name
       }));
 
       setScheduledMaintenance(transformedData);
@@ -144,7 +170,9 @@ export default function UserDashboard({ children }) {
           description: item.description,
           mechanics: item.maintenance_mechanics?.map(mm => mm.mechanics.name) || [],
           plate_number: item.plate_number,
-          date: item.date
+          date: item.date,
+          driver_details: item.driver_details,
+          mechanic_name: item.mechanic_name
         });
       });
 
@@ -389,17 +417,20 @@ export default function UserDashboard({ children }) {
                   </span>
                 </div>
                 
+                {/* Enhanced Maintenance Details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                   <div className="space-y-2">
                     <div className="flex items-center">
                       <i className="fas fa-tools mr-2 text-gray-400 w-4"></i>
-                      <span className="text-gray-600">
-                        {item.mechanics?.map(m => m.name).join(', ') || 'No mechanics assigned'}
+                      <span className="text-gray-600 font-medium">Mechanic:</span>
+                      <span className="text-gray-600 ml-1">
+                        {item.mechanic_name || item.mechanics?.map(m => m.name).join(', ') || 'Not assigned'}
                       </span>
                     </div>
                     <div className="flex items-center">
                       <i className="fas fa-calendar-day mr-2 text-gray-400 w-4"></i>
-                      <span className="text-gray-600">
+                      <span className="text-gray-600 font-medium">Date:</span>
+                      <span className="text-gray-600 ml-1">
                         {new Date(item.date).toLocaleDateString('en-US', {
                           weekday: 'short',
                           year: 'numeric',
@@ -408,15 +439,29 @@ export default function UserDashboard({ children }) {
                         })}
                       </span>
                     </div>
+                    <div className="flex items-center">
+                      <i className="fas fa-user mr-2 text-gray-400 w-4"></i>
+                      <span className="text-gray-600 font-medium">Driver:</span>
+                      <span className="text-gray-600 ml-1">
+                        {item.driver_details || 'Not specified'}
+                      </span>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center">
                       <i className="fas fa-truck mr-2 text-gray-400 w-4"></i>
-                      <span className="text-gray-600">{item.plate_number}</span>
+                      <span className="text-gray-600 font-medium">Plate:</span>
+                      <span className="text-gray-600 ml-1">{item.plate_number}</span>
                     </div>
                     <div className="flex items-center">
                       <i className="fas fa-odometer mr-2 text-gray-400 w-4"></i>
-                      <span className="text-gray-600">{item.current_odometer} km</span>
+                      <span className="text-gray-600 font-medium">Odometer:</span>
+                      <span className="text-gray-600 ml-1">{item.current_odometer} km</span>
+                    </div>
+                    <div className="flex items-center">
+                      <i className="fas fa-clipboard-list mr-2 text-gray-400 w-4"></i>
+                      <span className="text-gray-600 font-medium">Description:</span>
+                      <span className="text-gray-600 ml-1">{item.description}</span>
                     </div>
                   </div>
                 </div>
@@ -473,6 +518,7 @@ export default function UserDashboard({ children }) {
       const isSelected = selectedDate === dateStr;
       const isToday = dateStr === new Date().toISOString().split('T')[0];
       const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
+      const isAtLimit = checkMaintenanceLimit(dateStr);
 
       days.push(
         <div
@@ -481,7 +527,9 @@ export default function UserDashboard({ children }) {
             isSelected 
               ? 'border-blue-500 bg-blue-50 shadow-md scale-105' 
               : hasMaintenance 
-                ? 'border-blue-200 bg-blue-25' 
+                ? isAtLimit
+                  ? 'border-red-200 bg-red-25'
+                  : 'border-blue-200 bg-blue-25'
                 : 'border-gray-200'
           } ${
             isToday 
@@ -505,7 +553,9 @@ export default function UserDashboard({ children }) {
               {day}
             </span>
             {hasMaintenance && (
-              <div className="flex items-center justify-center w-5 h-5 bg-blue-500 text-white text-xs font-bold rounded-full">
+              <div className={`flex items-center justify-center w-5 h-5 text-white text-xs font-bold rounded-full ${
+                isAtLimit ? 'bg-red-500' : 'bg-blue-500'
+              }`}>
                 {hasMaintenance.length}
               </div>
             )}
@@ -527,6 +577,11 @@ export default function UserDashboard({ children }) {
                 +{hasMaintenance.length - 2} more
               </div>
             )}
+            {isAtLimit && (
+              <div className="text-xs text-red-600 text-center bg-red-100 py-1 rounded font-medium">
+                Limit Reached
+              </div>
+            )}
           </div>
         </div>
       );
@@ -539,6 +594,7 @@ export default function UserDashboard({ children }) {
     if (!selectedDate) return null;
 
     const maintenanceItems = maintenanceData[selectedDate] || [];
+    const isAtLimit = checkMaintenanceLimit(selectedDate);
 
     return (
       <div id="maintenance-details" className="space-y-6">
@@ -558,6 +614,19 @@ export default function UserDashboard({ children }) {
             <i className="fas fa-times text-lg"></i>
           </button>
         </div>
+        
+        {/* Maintenance Limit Warning */}
+        {isAtLimit && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <i className="fas fa-exclamation-triangle text-red-500 mr-3"></i>
+              <div>
+                <p className="text-red-800 font-medium">Maintenance Limit Reached</p>
+                <p className="text-red-600 text-sm">Maximum 5 maintenance tasks allowed per day</p>
+              </div>
+            </div>
+          </div>
+        )}
         
         <div id="maintenance-list" className="space-y-4">
           {maintenanceItems.length === 0 ? (
@@ -580,21 +649,52 @@ export default function UserDashboard({ children }) {
                   </span>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                {/* Enhanced Maintenance Details with requested fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
                   <div className="space-y-3">
                     <div className="flex items-center">
                       <i className="fas fa-tools mr-3 text-gray-400 w-5"></i>
-                      <span className="text-gray-600">{item.mechanics.join(', ')}</span>
+                      <div>
+                        <span className="text-gray-600 font-medium">Mechanic Name:</span>
+                        <span className="text-gray-800 ml-2">{item.mechanic_name || item.mechanics.join(', ') || 'Not assigned'}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <i className="fas fa-clipboard-list mr-3 text-gray-400 w-5"></i>
+                      <div>
+                        <span className="text-gray-600 font-medium">Description:</span>
+                        <span className="text-gray-800 ml-2">{item.description}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <i className="fas fa-user mr-3 text-gray-400 w-5"></i>
+                      <div>
+                        <span className="text-gray-600 font-medium">Driver Details:</span>
+                        <span className="text-gray-800 ml-2">{item.driver_details || 'Not specified'}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center">
-                      <i className="fas fa-truck mr-3 text-gray-400 w-5"></i>
-                      <span className="text-gray-600">{item.plate_number}</span>
+                      <i className="far fa-calendar mr-3 text-gray-400 w-5"></i>
+                      <div>
+                        <span className="text-gray-600 font-medium">Date of Maintenance:</span>
+                        <span className="text-gray-800 ml-2">{selectedDate}</span>
+                      </div>
                     </div>
                     <div className="flex items-center">
-                      <i className="far fa-calendar mr-3 text-gray-400 w-5"></i>
-                      <span className="text-gray-600">{selectedDate}</span>
+                      <i className="fas fa-truck mr-3 text-gray-400 w-5"></i>
+                      <div>
+                        <span className="text-gray-600 font-medium">Plate Number:</span>
+                        <span className="text-gray-800 ml-2">{item.plate_number}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <i className="fas fa-info-circle mr-3 text-gray-400 w-5"></i>
+                      <div>
+                        <span className="text-gray-600 font-medium">Status:</span>
+                        <span className="text-gray-800 ml-2">{item.status}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -774,6 +874,57 @@ export default function UserDashboard({ children }) {
     const totalMaintenanceCount = Object.values(maintenanceData).flat().length;
     const frequentTrucksCount = truckMaintenanceData.frequent.length;
 
+    // Chart.js configuration
+    const chartOptions = {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        title: {
+          display: false,
+        },
+        tooltip: {
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          titleColor: 'white',
+          bodyColor: 'white',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: {
+            color: 'rgba(0, 0, 0, 0.1)',
+          },
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        x: {
+          grid: {
+            display: false,
+          },
+        },
+      },
+    };
+
+    const chartData = {
+      labels: currentStats.labels,
+      datasets: [
+        {
+          label: 'Completed Maintenance',
+          data: currentStats.data,
+          backgroundColor: 'rgba(59, 130, 246, 0.8)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 2,
+          borderRadius: 6,
+          hoverBackgroundColor: 'rgba(59, 130, 246, 1)',
+        },
+      ],
+    };
+
     return (
       <div className="space-y-6">
         {/* Summary Cards - FIXED COLORS */}
@@ -809,7 +960,7 @@ export default function UserDashboard({ children }) {
           </div>
         </div>
 
-        {/* Maintenance Graph - FIXED VISIBILITY */}
+        {/* Maintenance Graph - UPDATED TO BAR CHART */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-lg font-bold text-gray-900">Completed Maintenance</h3>
@@ -848,32 +999,13 @@ export default function UserDashboard({ children }) {
           </div>
 
           {graphLoading ? (
-            <div className="flex items-end justify-between h-48 space-x-2">
-              {Array.from({ length: currentStats.labels.length }).map((_, index) => (
-                <div key={index} className="flex flex-col items-center space-y-2 flex-1">
-                  <div className="w-full bg-gray-300 rounded-t-lg animate-pulse" style={{ height: '60%' }}></div>
-                  <span className="text-xs text-gray-500">{currentStats.labels[index]}</span>
-                  <div className="h-4 bg-gray-300 rounded w-6 animate-pulse"></div>
-                </div>
-              ))}
+            <div className="flex items-center justify-center h-48">
+              <div className="animate-pulse bg-gray-300 rounded-lg w-full h-48"></div>
             </div>
           ) : (
             <>
-              <div className="flex items-end justify-between h-48 space-x-2 mb-4">
-                {currentStats.data.map((value, index) => (
-                  <div key={index} className="flex flex-col items-center space-y-2 flex-1">
-                    <div 
-                      className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg transition-all duration-300 hover:from-blue-700 hover:to-blue-500 shadow-md"
-                      style={{ 
-                        height: `${Math.max((value / maxValue) * 80, 10)}%`,
-                        minHeight: '20px'
-                      }}
-                      title={`${value} maintenance tasks`}
-                    ></div>
-                    <span className="text-xs text-gray-500 font-medium">{currentStats.labels[index]}</span>
-                    <span className="text-sm font-semibold text-gray-700">{value}</span>
-                  </div>
-                ))}
+              <div className="h-48">
+                <Bar data={chartData} options={chartOptions} />
               </div>
               
               <div className="mt-4 text-center">

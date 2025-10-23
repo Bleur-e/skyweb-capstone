@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useRouter } from 'next/navigation';
 import AddTruckModal from "./AddTruckModal";
 import ViewEditTruckModal from "./ViewEditTruckModal";
 import DeployTruckModal from "./DeployTruckModal";
@@ -33,7 +34,7 @@ const AlertPopup = ({ message, onClose }) => (
 );
 
 const TrucksPage = () => {
-
+  const router = useRouter();
   const [trucks, setTrucks] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -62,35 +63,21 @@ const TrucksPage = () => {
   
 
   
-  // ✅ Fetch current logged-in user
+  // ✅ Fetch current logged-in user with authentication check
   useEffect(() => {
-    const getCurrentUser = () => {
-      try {
-        const storedUser = sessionStorage.getItem("currentUser");
-        if (!storedUser) return null;
-        
-        const user = JSON.parse(storedUser);
-        
-        // Validate user structure
-        if (!user.id || !user.role) {
-          console.warn('Invalid user data in localStorage');
-          localStorage.removeItem("currentUser");
-          return null;
-        }
-        
-        return user;
-      } catch (error) {
-        console.error('Error getting current user:', error);
-        localStorage.removeItem("currentUser");
-        return null;
-      }
-    };
-
-    const user = getCurrentUser();
-    if (user) setCurrentUser(user);
-  }, []);
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!currentUser) {
+      router.push("/");
+      return;
+    }
+    setCurrentUser(currentUser);
+    
+    fetchTrucks();
+    fetchDrivers();
+  }, [router]);
 
   
+
   // ✅ Fetch trucks (not archived)
   const fetchTrucks = async () => {
     setLoading(true);
@@ -110,11 +97,6 @@ const TrucksPage = () => {
     if (error) console.error("Error fetching drivers:", error);
     else setDrivers(data || []);
   };
-
-  useEffect(() => {
-    fetchTrucks();
-    fetchDrivers();
-  }, []);
 
  // ✅ Simplified Audit Log Helper - Use direct action names
 const addAuditLog = async (action, tableName, description, recordId = null) => {
@@ -148,6 +130,14 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
   // ✅ Add Truck with Audit Log
   const handleAddTruck = async (newTruckData) => {
     try {
+      // Check authentication
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+      if (!storedUser?.id) {
+        showAlertPopup("You must be logged in to add a truck.");
+        router.push("/");
+        return;
+      }
+
       await addAuditLog(
         "Add",
         "trucks",
@@ -166,6 +156,14 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
   // ✅ Enhanced Edit Truck with restrictions and audit log
   const handleEditTruck = async (updatedTruckData) => {
     try {
+      // Check authentication
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+      if (!storedUser?.id) {
+        showAlertPopup("You must be logged in to edit a truck.");
+        router.push("/");
+        return;
+      }
+
       // Check if editing is allowed based on status
       const restrictedStatuses = ["Deployed", "Scheduled", "Maintenance"];
       if (restrictedStatuses.includes(updatedTruckData.status)) {
@@ -240,6 +238,14 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
 
   // ✅ Enhanced Archive Truck with restrictions and audit log
   const handleArchiveTruck = (truck) => {
+    // Check authentication
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+    if (!storedUser?.id) {
+      showAlertPopup("You must be logged in to archive a truck.");
+      router.push("/");
+      return;
+    }
+
     // Check if truck has a driver assigned
     if (truck.driver) {
       showAlertPopup("🚫 Please remove the assigned driver first before archiving this truck.");
@@ -263,6 +269,14 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
     if (!truckToArchive) return;
 
     try {
+      // Check authentication
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+      if (!storedUser?.id) {
+        showAlertPopup("You must be logged in to archive a truck.");
+        router.push("/");
+        return;
+      }
+
       const { error } = await supabase
         .from("trucks")
         .update({
@@ -304,6 +318,17 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
     const driver = drivers.find((d) => d.driver_id === truck.driver);
     return driver?.name || "No Driver Assigned";
   };
+
+  // Redirect to login if user is not authenticated
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

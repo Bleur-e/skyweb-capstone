@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import supabase from '../../../supabaseClient';
 
 const MaintenancePage = () => {
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState(null);
   const [trucks, setTrucks] = useState([]);
   const [truckSpecs, setTruckSpecs] = useState([]);
   const [mechanics, setMechanics] = useState([]);
@@ -12,7 +15,7 @@ const MaintenancePage = () => {
   const [upcomingMaintenance, setUpcomingMaintenance] = useState([]);
   const [showUpcomingModal, setShowUpcomingModal] = useState(false);
   const [alert, setAlert] = useState({ show: false, message: '', type: '' });
-
+ 
   const [formData, setFormData] = useState({
     maintenance_id: null,
     plate_number: '',
@@ -24,9 +27,14 @@ const MaintenancePage = () => {
   const [mechanicList, setMechanicList] = useState([{ mechanic_id: '' }]);
   const [itemList, setItemList] = useState([{ item_id: '', quantity: 1 }]);
 
- 
-
   useEffect(() => {
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!currentUser) {
+      router.push("/");
+      return;
+    }
+    setCurrentUser(currentUser);
+    
     fetchTrucks();
     fetchMechanics();
     fetchInventory();
@@ -35,13 +43,45 @@ const MaintenancePage = () => {
     
     // Check maintenance dates daily to update truck statuses
     checkMaintenanceDates();
-  }, []);
+  }, [router]);
 
   // Show alert popup
   const showAlert = (message, type = 'info') => {
     setAlert({ show: true, message, type });
     setTimeout(() => setAlert({ show: false, message: '', type: '' }), 5000);
   };
+
+  // Send notification to all users with role 'user'
+const sendNotificationToUsers = async (message, type = 'info') => {
+  try {
+    // Get all users with role 'user' from your custom users table
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'user');
+
+    if (error) throw error;
+
+    if (users && users.length > 0) {
+      // Create notifications for each user - using the id from your custom users table
+      const notifications = users.map(user => ({
+        message,
+        type,
+        user_id: user.id, // This should match the id in your custom users table
+        role: 'user',
+        created_at: new Date().toISOString()
+      }));
+
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .insert(notifications);
+
+      if (notificationError) throw notificationError;
+    }
+  } catch (err) {
+    console.error('Error sending notifications:', err.message);
+  }
+};
 
   // Check maintenance dates and update truck statuses
   const checkMaintenanceDates = async () => {
@@ -205,6 +245,7 @@ const MaintenancePage = () => {
       const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
       if (!storedUser?.id) {
         showAlert("You must be logged in to mark maintenance as done.", 'error');
+        router.push("/");
         return;
       }
 
@@ -286,39 +327,86 @@ const MaintenancePage = () => {
     }
   };
 
-  // 🔴 CANCEL MAINTENANCE
-  const cancelMaintenance = async (maintenanceId, plateNumber) => {
-    if (!window.confirm('Are you sure you want to cancel this maintenance?')) return;
-    try {
-      const { data: usedItems, error: itemsError } = await supabase
-        .from('maintenance_items')
-        .select('item_id, quantity')
-        .eq('maintenance_id', maintenanceId);
-      if (itemsError) throw itemsError;
-
-      // Return items to inventory
-      for (const item of usedItems) {
-        await supabase.rpc('increment_inventory_quantity', {
-          item_id_input: item.item_id,
-          qty_input: item.quantity,
-        });
-      }
-
-      await supabase.from('maintenance_items').delete().eq('maintenance_id', maintenanceId);
-      await supabase.from('maintenance_mechanics').delete().eq('maintenance_id', maintenanceId);
-      await supabase.from('maintenance').delete().eq('maintenance_id', maintenanceId);
-
-      // Set truck status back to Available
-      await supabase.from('trucks').update({ status: 'Available' }).eq('plate_number', plateNumber);
-
-      showAlert('❌ Maintenance canceled and items returned to inventory.', 'success');
-      fetchUpcomingMaintenance();
-      fetchTrucks(); // Refresh trucks to update status
-    } catch (err) {
-      console.error('Cancel error:', err);
-      showAlert('⚠️ Failed to cancel maintenance.', 'error');
+ // 🔴 CANCEL MAINTENANCE
+const cancelMaintenance = async (maintenanceId, plateNumber) => {
+  if (!window.confirm('Are you sure you want to cancel this maintenance?')) return;
+  try {
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+    if (!storedUser?.id) {
+      showAlert("You must be logged in to cancel maintenance.", 'error');
+      router.push("/");
+      return;
     }
-  };
+
+    console.log('Starting cancellation process for maintenance:', maintenanceId);
+
+    const { data: usedItems, error: itemsError } = await supabase
+      .from('maintenance_items')
+      .select('item_id, quantity')
+      .eq('maintenance_id', maintenanceId);
+    if (itemsError) throw itemsError;
+
+    console.log('Found used items:', usedItems);
+
+    // Return items to inventory
+    for (const item of usedItems) {
+      await supabase.rpc('increment_inventory_quantity', {
+        item_id_input: item.item_id,
+        qty_input: item.quantity,
+      });
+    }
+
+    // ✅ RECORD CANCELLATION IN MAINTENANCE_LOGS FIRST (before deleting)
+    console.log('Inserting into maintenance_logs...');
+    const { data: logData, error: logError } = await supabase
+      .from('maintenance_logs')
+      .insert([{
+        maintenance_id: maintenanceId,
+        status: 'Cancelled',
+        completed_at: new Date().toISOString(),
+        completed_by: storedUser.id,
+      }])
+      .select(); // Add .select() to see what's returned
+
+    if (logError) {
+      console.error('Error inserting into maintenance_logs:', logError);
+      throw logError;
+    }
+    console.log('Successfully inserted into maintenance_logs:', logData);
+
+    // Now delete the related records and maintenance
+    console.log('Deleting maintenance items...');
+    await supabase.from('maintenance_items').delete().eq('maintenance_id', maintenanceId);
+    
+    console.log('Deleting maintenance mechanics...');
+    await supabase.from('maintenance_mechanics').delete().eq('maintenance_id', maintenanceId);
+    
+    console.log('Deleting maintenance record...');
+    await supabase.from('maintenance').delete().eq('maintenance_id', maintenanceId);
+
+    // Set truck status back to Available
+    console.log('Updating truck status...');
+    await supabase.from('trucks').update({ status: 'Available' }).eq('plate_number', plateNumber);
+
+    // Add audit log
+    console.log('Adding audit log...');
+    await supabase.from("audit_logs").insert([{
+      user_id: storedUser.id,
+      role: storedUser.role,
+      action: "Cancelled",
+      table_name: "maintenance",
+      description: `Maintenance ID ${maintenanceId} for truck ${plateNumber} cancelled.`,
+    }]);
+
+    console.log('Cancellation process completed successfully');
+    showAlert('❌ Maintenance canceled and items returned to inventory.', 'success');
+    fetchUpcomingMaintenance();
+    fetchTrucks(); // Refresh trucks to update status
+  } catch (err) {
+    console.error('Cancel error:', err);
+    showAlert('⚠️ Failed to cancel maintenance.', 'error');
+  }
+};
 
   // 📝 EDIT MAINTENANCE
   const editMaintenance = (maintenance) => {
@@ -337,9 +425,10 @@ const MaintenancePage = () => {
   // ✅ SUBMIT MAINTENANCE
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
     if (!storedUser?.id) {
       showAlert("You must be logged in.", 'error');
+      router.push("/");
       return;
     }
 
@@ -427,6 +516,12 @@ const MaintenancePage = () => {
           }
         }
 
+        // Send notification to all users about the new maintenance
+        await sendNotificationToUsers(
+          `Truck ${formData.plate_number} is scheduled for maintenance (${formData.maintenance_type}) on ${formData.date}`,
+          'info'
+        );
+
         showAlert('Maintenance scheduled successfully!', 'success');
       }
 
@@ -442,6 +537,17 @@ const MaintenancePage = () => {
       showAlert('Failed to schedule maintenance.', 'error');
     }
   };
+
+  // Redirect to login if user is not authenticated
+  if (!currentUser) {
+    return (
+      <main className="flex-1 p-6 bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Redirecting to login...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 p-6 bg-gray-50 min-h-screen">

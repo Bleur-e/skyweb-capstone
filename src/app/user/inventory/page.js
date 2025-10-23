@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../supabaseClient';
+import { useRouter } from 'next/navigation';
 
 const InventoryPage = () => {
+  const router = useRouter();
   const [items, setItems] = useState([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -29,9 +31,13 @@ const InventoryPage = () => {
 
   // Load current user
   useEffect(() => {
-    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-    if (storedUser) setCurrentUser(storedUser);
-  }, []);
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentUser(currentUser);
+        }, [router]);
 
   useEffect(() => {
     fetchInventory();
@@ -437,7 +443,7 @@ const InventoryPage = () => {
 
       {/* Add Item Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+        <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-800">Add New Item</h3>
@@ -507,7 +513,7 @@ const InventoryPage = () => {
 
       {/* Edit Stock Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+        <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-800">Adjust Stock Level</h3>
@@ -586,7 +592,7 @@ const InventoryPage = () => {
 
       {/* Archive Confirmation Modal */}
       {showArchiveModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+        <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-800">Archive Item</h3>

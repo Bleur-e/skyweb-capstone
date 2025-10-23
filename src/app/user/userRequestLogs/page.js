@@ -1,21 +1,29 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import supabase from '../../../supabaseClient';
 
 const UserRequestLogsPage = () => {
+  const router = useRouter();
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
   const [profileRequests, setProfileRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestItems, setRequestItems] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('maintenance'); // 'maintenance' or 'profile'
+  const [currentUser, setCurrentUser] = useState(null);
 
+  
   // Fetch all requests for current user
   useEffect(() => {
     const fetchRequests = async () => {
       const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-      if (!storedUser) return;
+      if (!storedUser) {
+        router.push("/");
+        return;
+      }
+      setCurrentUser(storedUser);
 
       // Fetch maintenance requests
       const { data: maintenanceData, error: maintenanceError } = await supabase
@@ -58,7 +66,7 @@ const UserRequestLogsPage = () => {
     };
 
     fetchRequests();
-  }, []);
+  }, [router]);
 
   const handleViewRequest = (request, type) => {
     setSelectedRequest({ ...request, type });
@@ -190,6 +198,17 @@ const UserRequestLogsPage = () => {
       <RequestTable requests={requests} type={type} />
     </div>
   );
+
+  // Redirect to login if user is not authenticated
+  if (!currentUser) {
+    return (
+      <main className="flex-1 p-6 bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Redirecting to login...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 p-6 bg-gray-50 min-h-screen">

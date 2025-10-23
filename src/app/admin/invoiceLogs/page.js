@@ -2,8 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import supabase from '../../../supabaseClient';
+import { useRouter } from 'next/navigation';
 
 const InvoiceLogsPage = () => {
+  const router = useRouter();
+  const [currentAdmin, setCurrentAdmin] = useState(null);
   const [activeTab, setActiveTab] = useState('sales');
   const [salesInvoices, setSalesInvoices] = useState([]);
   const [serviceInvoices, setServiceInvoices] = useState([]);
@@ -11,6 +14,15 @@ const InvoiceLogsPage = () => {
   const [items, setItems] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedImage, setExpandedImage] = useState(null);
+
+  useEffect(() => {
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentAdmin(currentUser);
+        }, [router]);
 
   useEffect(() => {
     if (activeTab === 'sales') fetchSalesInvoices();

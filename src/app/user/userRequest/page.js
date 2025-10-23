@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../supabaseClient';
+import { useRouter } from 'next/navigation';
 
 const UserRequestPage = () => {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState(null);
   const [trucks, setTrucks] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -24,12 +26,14 @@ const UserRequestPage = () => {
   ]);
 
   // Load current user
-  useEffect(() => {
-    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-    if (storedUser) {
-      setCurrentUser(storedUser);
-    }
-  }, []);
+ useEffect(() => {
+         const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+         if (!currentUser) {
+           router.push("/");
+           return;
+         }
+         setCurrentUser(currentUser);
+       }, [router]);
 
   // Fetch trucks & inventory - Filter out archived trucks
   useEffect(() => {

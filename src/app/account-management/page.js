@@ -31,7 +31,7 @@ export default function AccountManagement() {
   });
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("currentUser"));
+    const user = JSON.parse(sessionStorage.getItem("currentUser"));
     if (!user) {
       router.push("/");
       return;

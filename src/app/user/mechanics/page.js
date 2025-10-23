@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../supabaseClient';
+import { useRouter } from 'next/navigation';
 
 const MechanicPage = () => {
+  const router = useRouter();
   const [isModalOpen, setModalOpen] = useState(false);
   const [isViewModalOpen, setViewModalOpen] = useState(false);
   const [isArchiveModalOpen, setArchiveModalOpen] = useState(false);
@@ -28,10 +30,13 @@ const MechanicPage = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-    if (storedUser) setCurrentUser(storedUser);
-    fetchMechanics();
-  }, []);
+        const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+        if (!currentUser) {
+          router.push("/");
+          return;
+        }
+        setCurrentUser(currentUser);
+      }, [router]);
 
   const fetchMechanics = async () => {
     setLoading(true);
@@ -430,176 +435,206 @@ const MechanicPage = () => {
       </div>
 
       {/* Add/Edit Mechanic Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-bold text-gray-800">
-                {editingMechanic ? 'Edit Mechanic' : 'Add New Mechanic'}
-              </h3>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Mechanic ID</label>
-                  <input
-                    name="mechanic_id"
-                    value={formData.mechanic_id}
-                    disabled
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-gray-50 text-gray-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                  <input
-                    name="name"
-                    onChange={handleChange}
-                    value={formData.name}
-                    placeholder="Enter full name"
-                    required
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Birthdate</label>
-                  <input
-                    name="birthdate"
-                    type="date"
-                    onChange={handleChange}
-                    value={formData.birthdate}
-                    required
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
-                  <input
-                    name="contact_no"
-                    onChange={handleChange}
-                    value={formData.contact_no}
-                    placeholder="Contact number"
-                    required
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-                  <input
-                    name="address"
-                    onChange={handleChange}
-                    value={formData.address}
-                    placeholder="Full address"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                    name="photo" 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleChange} 
-                  />
-                  {photoPreview && (
-                    <div className="mt-3">
-                      <p className="text-sm text-gray-600 mb-2">Photo Preview:</p>
-                      <img src={photoPreview} alt="Preview" className="w-24 h-24 object-cover rounded-full border border-gray-300" />
-                    </div>
-                  )}
-                </div>
+{isModalOpen && (
+  <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="p-6 border-b border-gray-200">
+        <h3 className="text-xl font-bold text-gray-800">
+          {editingMechanic ? 'Edit Mechanic' : 'Add New Mechanic'}
+        </h3>
+      </div>
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Mechanic ID</label>
+            <input
+              name="mechanic_id"
+              value={formData.mechanic_id}
+              disabled
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-gray-50 text-gray-600"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+            <input
+              name="name"
+              onChange={handleChange}
+              onKeyPress={(e) => {
+                // Prevent numbers
+                if (/[0-9]/.test(e.key)) {
+                  e.preventDefault();
+                }
+              }}
+              value={formData.name}
+              placeholder="Enter full name"
+              maxLength={30}
+              required
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">{formData.name.length}/30 characters</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Birthdate</label>
+            <input
+              name="birthdate"
+              type="date"
+              onChange={handleChange}
+              value={formData.birthdate}
+              max={new Date(new Date().setFullYear(new Date().getFullYear() - 20)).toISOString().split('T')[0]}
+              required
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">Must be 20 years or older</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
+            <input
+              name="contact_no"
+              onChange={handleChange}
+              onKeyPress={(e) => {
+                // Prevent letters and special characters except numbers
+                if (!/[0-9]/.test(e.key)) {
+                  e.preventDefault();
+                }
+              }}
+              value={formData.contact_no}
+              placeholder="Contact number"
+              maxLength={11}
+              required
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">{formData.contact_no.length}/11 digits</p>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+            <input
+              name="address"
+              onChange={handleChange}
+              value={formData.address}
+              placeholder="Full address"
+              maxLength={75}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">{formData.address.length}/75 characters</p>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
+            <input 
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+              name="photo" 
+              type="file" 
+              accept="image/*" 
+              onChange={handleChange} 
+            />
+            {photoPreview && (
+              <div className="mt-3">
+                <p className="text-sm text-gray-600 mb-2">Photo Preview:</p>
+                <img src={photoPreview} alt="Preview" className="w-24 h-24 object-cover rounded-full border border-gray-300" />
               </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  {editingMechanic ? 'Update Mechanic' : 'Add Mechanic'}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
-      )}
+        <div className="flex justify-end space-x-3 pt-4">
+          <button
+            type="button"
+            onClick={handleCloseModal}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            {editingMechanic ? 'Update Mechanic' : 'Add Mechanic'}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
 
-      {/* View/Edit Contact Modal */}
-      {isViewModalOpen && viewingMechanic && (
-        <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-bold text-gray-800">Mechanic Details</h3>
-            </div>
-            <div className="p-6">
-              <div className="flex items-center mb-6">
-                <div className="flex-shrink-0 h-16 w-16">
-                  {viewingMechanic.photo_url ? (
-                    <img 
-                      src={viewingMechanic.photo_url} 
-                      alt={viewingMechanic.name} 
-                      className="rounded-full h-16 w-16 object-cover border border-gray-200"
-                    />
-                  ) : (
-                    <div className="rounded-full h-16 w-16 bg-gray-200 flex items-center justify-center">
-                      <span className="text-gray-500 font-medium">
-                        {viewingMechanic.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="ml-4">
-                  <h4 className="text-lg font-semibold text-gray-900">{viewingMechanic.name}</h4>
-                  <p className="text-sm text-gray-500">{viewingMechanic.mechanic_id}</p>
-                  <p className="text-sm text-gray-600">{calculateAge(viewingMechanic.birthdate)} years old</p>
-                </div>
+{/* View/Edit Contact Modal */}
+{isViewModalOpen && viewingMechanic && (
+  <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+      <div className="p-6 border-b border-gray-200">
+        <h3 className="text-xl font-bold text-gray-800">Mechanic Details</h3>
+      </div>
+      <div className="p-6">
+        <div className="flex items-center mb-6">
+          <div className="flex-shrink-0 h-16 w-16">
+            {viewingMechanic.photo_url ? (
+              <img 
+                src={viewingMechanic.photo_url} 
+                alt={viewingMechanic.name} 
+                className="rounded-full h-16 w-16 object-cover border border-gray-200"
+              />
+            ) : (
+              <div className="rounded-full h-16 w-16 bg-gray-200 flex items-center justify-center">
+                <span className="text-gray-500 font-medium">
+                  {viewingMechanic.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                </span>
               </div>
-
-              <form onSubmit={handleEditSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
-                  <input
-                    name="contact_no"
-                    value={editFormData.contact_no}
-                    onChange={handleEditChange}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
-                  <input
-                    name="address"
-                    value={editFormData.address}
-                    onChange={handleEditChange}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={handleCloseViewModal}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                  >
-                    Update Contact Info
-                  </button>
-                </div>
-              </form>
-            </div>
+            )}
+          </div>
+          <div className="ml-4">
+            <h4 className="text-lg font-semibold text-gray-900">{viewingMechanic.name}</h4>
+            <p className="text-sm text-gray-500">{viewingMechanic.mechanic_id}</p>
+            <p className="text-sm text-gray-600">{calculateAge(viewingMechanic.birthdate)} years old</p>
           </div>
         </div>
-      )}
+
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
+            <input
+              name="contact_no"
+              value={editFormData.contact_no}
+              onChange={handleEditChange}
+              onKeyPress={(e) => {
+                // Prevent letters and special characters except numbers
+                if (!/[0-9]/.test(e.key)) {
+                  e.preventDefault();
+                }
+              }}
+              maxLength={11}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">{editFormData.contact_no?.length || 0}/11 digits</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+            <input
+              name="address"
+              value={editFormData.address}
+              onChange={handleEditChange}
+              maxLength={75}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">{editFormData.address?.length || 0}/75 characters</p>
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={handleCloseViewModal}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Update Contact Info
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Archive Confirmation Modal */}
       {isArchiveModalOpen && archivingMechanic && (

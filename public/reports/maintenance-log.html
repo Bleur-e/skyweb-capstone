@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance Log - Skyland Brokerage</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* Same styles as transaction log, just change the colors if needed */
+        @media print {
+            @page {
+                margin: 1cm;
+                size: A4;
+            }
+            
+            body {
+                font-family: Arial, sans-serif;
+                font-size: 12px;
+                line-height: 1.4;
+                color: #000;
+                background: white;
+            }
+            
+            .no-print {
+                display: none !important;
+            }
+            
+            .header {
+                display: flex;
+                align-items: center;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+            }
+            
+            .logo {
+                width: 70px;
+                height: 70px;
+                margin-right: 15px;
+            }
+            
+            .company-info {
+                flex: 1;
+                text-align: center;
+            }
+            
+            .company-name {
+                font-size: 18px;
+                font-weight: bold;
+                margin: 0;
+            }
+            
+            .company-address {
+                font-size: 12px;
+                margin: 5px 0;
+            }
+            
+            .report-title {
+                font-size: 16px;
+                font-weight: bold;
+                margin: 10px 0;
+            }
+            
+            .report-date {
+                text-align: right;
+                font-size: 11px;
+                margin-bottom: 10px;
+            }
+            
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 10px 0;
+            }
+            
+            th, td {
+                border: 1px solid #000;
+                padding: 6px 8px;
+                text-align: left;
+            }
+            
+            th {
+                background-color: #f0f0f0;
+                font-weight: bold;
+            }
+            
+            .status-completed { background-color: #d1e7dd; }
+            .status-cancelled { background-color: #f8d7da; }
+            .status-scheduled { background-color: #fff3cd; }
+            .status-in-progress { background-color: #cfe2ff; }
+            
+            .section-title {
+                background-color: #e9ecef;
+                padding: 8px;
+                margin: 15px 0 10px 0;
+                font-weight: bold;
+                border-left: 4px solid #007bff;
+            }
+            
+            .footer {
+                margin-top: 30px;
+                padding-top: 10px;
+                border-top: 1px solid #000;
+                text-align: center;
+                font-size: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+            }
+            
+            .footer-logo {
+                width: 40px;
+                height: 40px;
+            }
+            
+            .date-filter-info {
+                background-color: #e8f4fd;
+                border: 1px solid #b6d7f2;
+                border-radius: 6px;
+                padding: 8px 12px;
+                margin: 10px 0;
+                font-size: 11px;
+                text-align: center;
+            }
+            
+            .summary {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 10px;
+                margin: 15px 0;
+                border-radius: 4px;
+            }
+        }
+        
+        @media screen {
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 210mm;
+                margin: 20px auto;
+                padding: 20px;
+                background-color: white;
+            }
+            
+            .loading {
+                text-align: center;
+                padding: 40px;
+                color: #666;
+            }
+            
+            .error {
+                text-align: center;
+                padding: 40px;
+                color: #dc2626;
+                background-color: #fef2f2;
+                border: 1px solid #fecaca;
+                border-radius: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="/logo.png" alt="Company Logo" class="logo" onerror="this.style.display='none'">
+        <div class="company-info">
+            <div class="company-name">Skyland Brokerage Motorpool Inc</div>
+            <div class="company-address">Pantoc, Meycauayan, Bulacan</div>
+            <div class="report-title">MAINTENANCE LOG REPORT</div>
+        </div>
+    </div>
+
+    <div class="report-date">Generated on: <span id="currentDate"></span></div>
+
+    <!-- Date Filter Info -->
+    <div id="dateFilterInfo" class="date-filter-info" style="display: none;">
+        Filtered by date range: <span id="dateRangeText"></span>
+    </div>
+
+    <div id="reportContent">
+        <div class="loading">Loading report data...</div>
+    </div>
+
+    <div class="footer">
+        <img src="/logo.png" alt="Company Logo" class="footer-logo" onerror="this.style.display='none'">
+        <div>
+            This report was generated automatically by the Skyland Brokerage Motorpool System<br>
+            <small>Skyland Brokerage Motorpool Inc - Pantoc, Meycauayan, Bulacan</small>
+        </div>
+    </div>
+
+    <script>
+        // Set current date
+        document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-PH', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Your actual Supabase credentials
+        const SUPABASE_URL = 'https://csyxtrxsaorznimehari.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzeXh0cnhzYW9yem5pbWVoYXJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MjM2ODYsImV4cCI6MjA3MDI5OTY4Nn0.crcRwq82bixJ8CqW9AqckZFECFmSYxOtQR2jkezv8F8';
+
+        // Get URL parameters for filtering
+        const urlParams = new URLSearchParams(window.location.search);
+        const startDate = urlParams.get('start_date');
+        const endDate = urlParams.get('end_date');
+
+        // Show date filter info if dates are provided
+        if (startDate && endDate) {
+            document.getElementById('dateFilterInfo').style.display = 'block';
+            document.getElementById('dateRangeText').textContent = 
+                `${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}`;
+        }
+
+        // Initialize Supabase client
+        let supabase;
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } catch (error) {
+            console.error('Failed to initialize Supabase client:', error);
+            document.getElementById('reportContent').innerHTML = 
+                '<div class="error">Failed to initialize database connection. Please refresh the page.</div>';
+        }
+
+        // Client-side date filtering function
+        function filterDataByDate(data, dateField, startDate, endDate) {
+            if (!startDate && !endDate) return data;
+            
+            return data.filter(item => {
+                if (!item[dateField]) return false;
+                
+                const itemDate = new Date(item[dateField]);
+                const start = startDate ? new Date(startDate) : null;
+                const end = endDate ? new Date(endDate) : null;
+                
+                let matches = true;
+                if (start) {
+                    matches = matches && itemDate >= start;
+                }
+                if (end) {
+                    // Set end date to end of day
+                    const endOfDay = new Date(end);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    matches = matches && itemDate <= endOfDay;
+                }
+                
+                return matches;
+            });
+        }
+
+        async function fetchReportData() {
+            try {
+                if (!supabase) {
+                    throw new Error('Database connection not available');
+                }
+
+                // Build maintenance logs query
+                let maintenanceQuery = supabase
+                    .from('maintenance_logs')
+                    .select(`
+                        log_id,
+                        status,
+                        completed_at,
+                        created_at,
+                        maintenance_id,
+                        maintenance (
+                            maintenance_id,
+                            plate_number,
+                            date,
+                            description,
+                            maintenance_type,
+                            photo_url,
+                            encoded_by,
+                            encoded_by_user: encoded_by (full_name),
+                            maintenance_mechanics (
+                                mechanics (name)
+                            ),
+                            maintenance_items (
+                                quantity,
+                                inventory (item_name)
+                            )
+                        ),
+                        completed_by_user: completed_by (full_name)
+                    `)
+                    .order('completed_at', { ascending: false });
+
+                const { data, error } = await maintenanceQuery;
+                if (error) throw error;
+
+                const formattedLogs = data
+                    .filter((log) => log.maintenance)
+                    .map((log) => ({
+                        ...log,
+                        ...log.maintenance,
+                        completed_by_full_name: log.completed_by_user?.full_name || 'N/A',
+                        encoded_by_full_name: log.maintenance?.encoded_by_user?.full_name || 'N/A',
+                    }));
+
+                // Apply client-side date filtering
+                let filteredLogs = formattedLogs || [];
+                if (startDate || endDate) {
+                    filteredLogs = filterDataByDate(formattedLogs, 'completed_at', startDate, endDate);
+                    console.log(`Maintenance logs filtered: ${formattedLogs?.length || 0} -> ${filteredLogs.length}`);
+                }
+
+                generateReport({
+                    maintenanceLogs: filteredLogs,
+                    dateRange: { startDate, endDate }
+                });
+                
+            } catch (error) {
+                console.error('Error fetching report data:', error);
+                document.getElementById('reportContent').innerHTML = 
+                    '<div class="error">Error loading report data: ' + error.message + '</div>';
+            }
+        }
+
+        function generateReport(data) {
+            const container = document.getElementById('reportContent');
+            
+            if (!data.maintenanceLogs?.length) {
+                let message = 'No maintenance log data available';
+                if (data.dateRange.startDate && data.dateRange.endDate) {
+                    message += ` for the selected date range (${data.dateRange.startDate} to ${data.dateRange.endDate})`;
+                }
+                container.innerHTML = `<div class="section-title">${message}</div>`;
+                return;
+            }
+
+            let html = '';
+
+            // Add date range info to section titles
+            const dateSuffix = data.dateRange.startDate && data.dateRange.endDate ? 
+                ` (${data.dateRange.startDate} to ${data.dateRange.endDate})` : '';
+
+            html += `<div class="section-title">MAINTENANCE COMPLETION RECORDS${dateSuffix}</div>`;
+            
+            html += `<table>
+                <thead>
+                    <tr>
+                        <th>Completion Date</th>
+                        <th>Plate Number</th>
+                        <th>Maintenance Type</th>
+                        <th>Status</th>
+                        <th>Completed By</th>
+                        <th>Original Date</th>
+                        <th>Description</th>
+                        <th>Mechanics</th>
+                        <th>Items Used</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+            data.maintenanceLogs.forEach(log => {
+                const mechanics = log.maintenance_mechanics
+                    ?.map(m => m.mechanics?.name)
+                    .filter(Boolean)
+                    .join(', ') || 'N/A';
+                    
+                const items = log.maintenance_items
+                    ?.map(item => `${item.inventory?.item_name} (${item.quantity})`)
+                    .join(', ') || 'N/A';
+                
+                html += `<tr>
+                    <td>${log.completed_at ? new Date(log.completed_at).toLocaleDateString() : 'N/A'}</td>
+                    <td>${log.plate_number || 'N/A'}</td>
+                    <td>${log.maintenance_type || 'N/A'}</td>
+                    <td class="status-${log.status.toLowerCase().replace(' ', '-')}">${log.status}</td>
+                    <td>${log.completed_by_full_name}</td>
+                    <td>${new Date(log.date).toLocaleDateString()}</td>
+                    <td>${log.description || 'N/A'}</td>
+                    <td>${mechanics}</td>
+                    <td>${items}</td>
+                </tr>`;
+            });
+
+            html += `</tbody></table>`;
+
+            // Add summary section
+            const completed = data.maintenanceLogs.filter(log => log.status === 'Completed').length;
+            const cancelled = data.maintenanceLogs.filter(log => log.status === 'Cancelled').length;
+            const scheduled = data.maintenanceLogs.filter(log => log.status === 'Scheduled').length;
+            const inProgress = data.maintenanceLogs.filter(log => log.status === 'In Progress').length;
+            
+            html += `<div class="summary">
+                <strong>Maintenance Summary:</strong><br>
+                Total Maintenance Records: ${data.maintenanceLogs.length}<br>
+                Completed: ${completed} | In Progress: ${inProgress} | Scheduled: ${scheduled} | Cancelled: ${cancelled}
+            </div>`;
+
+            container.innerHTML = html;
+        }
+
+        // Load report data when page loads
+        if (supabase) {
+            fetchReportData();
+        }
+    </script>
+</body>
+</html>

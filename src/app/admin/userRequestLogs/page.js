@@ -1,9 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../supabaseClient';
+import { useRouter } from 'next/navigation';
 
 export default function AdminRequestPage() {
-  const [activeTab, setActiveTab] = useState('funds'); // 'funds' or 'profile'
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState('funds');
   const [fundLogs, setFundLogs] = useState([]);
   const [profileLogs, setProfileLogs] = useState([]);
   const [filteredFundLogs, setFilteredFundLogs] = useState([]);
@@ -15,22 +17,23 @@ export default function AdminRequestPage() {
   const [fundsLoading, setFundsLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
   const [currentAdmin, setCurrentAdmin] = useState(null);
-  const [fundStatusFilter, setFundStatusFilter] = useState('all'); // 'all', 'approved', 'declined'
-  const [profileStatusFilter, setProfileStatusFilter] = useState('all'); // 'all', 'approved', 'declined'
+  const [fundStatusFilter, setFundStatusFilter] = useState('all');
+  const [profileStatusFilter, setProfileStatusFilter] = useState('all');
 
-  // Get current admin user
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem('currentUser'));
-    setCurrentAdmin(storedUser);
-  }, []);
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentAdmin(currentUser);
+        }, [router]);
 
-  // Fetch all data based on active tab
   useEffect(() => {
     fetchFundLogs();
     fetchProfileLogs();
   }, []);
 
-  // Apply filters when fundLogs or filter changes
   useEffect(() => {
     if (fundStatusFilter === 'all') {
       setFilteredFundLogs(fundLogs);
@@ -41,7 +44,6 @@ export default function AdminRequestPage() {
     }
   }, [fundLogs, fundStatusFilter]);
 
-  // Apply filters when profileLogs or filter changes
   useEffect(() => {
     if (profileStatusFilter === 'all') {
       setFilteredProfileLogs(profileLogs);
@@ -123,6 +125,7 @@ export default function AdminRequestPage() {
     try {
       setProfileLoading(true);
       
+      // Use the same pattern as fund logs
       const { data: profileLogsData, error: profileError } = await supabase
         .from('profile_update_requests')
         .select(`
@@ -138,27 +141,35 @@ export default function AdminRequestPage() {
         return;
       }
 
-      // Get admin user details separately for profile logs
-      const profileLogsWithAdmins = await Promise.all(
-        (profileLogsData || []).map(async (log) => {
-          let adminUser = null;
-          if (log.action_by) {
-            const { data: adminData } = await supabase
-              .from('users')
-              .select('full_name, email')
-              .eq('id', log.action_by)
-              .single();
-            adminUser = adminData;
-          }
-          
-          return {
-            ...log,
-            admin_user: adminUser
-          };
-        })
-      );
+      console.log('Profile logs with admin data:', profileLogsData); // Debug log
 
-      setProfileLogs(profileLogsWithAdmins);
+      // Format the data exactly like fund logs
+      const formattedProfileLogs = (profileLogsData || []).map(log => ({
+        id: log.id,
+        user_id: log.user_id,
+        full_name: log.full_name,
+        address: log.address,
+        contact_no: log.contact_no,
+        position: log.position,
+        photo_url: log.photo_url,
+        status: log.status,
+        created_at: log.created_at,
+        updated_at: log.updated_at,
+        action_by: log.action_by,
+        users: log.users ? {
+          full_name: log.users.full_name,
+          email: log.users.email,
+          position: log.users.position,
+          address: log.users.address,
+          contact_no: log.users.contact_no
+        } : null,
+        admin_user: log.admin_users ? {
+          name: log.admin_users.full_name,
+          email: log.admin_users.email
+        } : null
+      }));
+
+      setProfileLogs(formattedProfileLogs);
     } catch (error) {
       console.error('Error fetching profile logs:', error);
       alert('Error loading profile logs data');
@@ -177,7 +188,6 @@ export default function AdminRequestPage() {
     setIsProfileModalOpen(true);
   };
 
-  // Status badge component
   const StatusBadge = ({ status }) => {
     let colorClass = '';
     if (status === 'Pending') colorClass = 'bg-yellow-500 text-white';
@@ -344,7 +354,7 @@ export default function AdminRequestPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      {log.full_name || log.position ? 'Profile Updates' : 'No changes'}
+                      {log.full_name || log.position || log.address || log.contact_no ? 'Profile Updates' : 'No changes'}
                     </td>
                     <td className="py-3 px-4">
                       {new Date(log.created_at).toLocaleDateString()}
@@ -358,10 +368,10 @@ export default function AdminRequestPage() {
                     <td className="py-3 px-4">
                       <div>
                         <div className="font-medium text-gray-800">
-                          {log.admin_user?.full_name || 'Unknown Admin'}
+                          {log.admin_user?.name || 'Admin'}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {log.admin_user?.email || 'N/A'}
+                          {log.admin_user?.email || ''}
                         </div>
                       </div>
                     </td>
@@ -393,7 +403,7 @@ export default function AdminRequestPage() {
     <div className="p-6">
       <h1 className="text-2xl font-bold text-blue-900 mb-4">Request Logs</h1>
 
-      {/* Tab Navigation - Only 2 tabs now */}
+      {/* Tab Navigation */}
       <div className="mb-6 border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           <button
@@ -425,94 +435,95 @@ export default function AdminRequestPage() {
 
       {/* Fund Log Details Modal */}
       {isFundModalOpen && selectedFundLog && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-blue-900 mb-4">
-              Fund Request Details
-            </h3>
-
-            {/* Request Info */}
-            <div className="grid grid-cols-2 gap-4 mb-6 text-gray-700">
-              <div>
-                <strong>Request ID:</strong> {selectedFundLog.request_id}
-              </div>
-              <div>
-                <strong>Request Date:</strong> {new Date(selectedFundLog.request_date).toLocaleString()}
-              </div>
-              <div>
-                <strong>User:</strong> {selectedFundLog.user?.name}
-              </div>
-              <div>
-                <strong>Email:</strong> {selectedFundLog.user?.email}
-              </div>
-              <div>
-                <strong>Truck:</strong> {selectedFundLog.plate_number}
-              </div>
-              <div>
-                <strong>Estimated Cost:</strong> ₱{selectedFundLog.estimated_cost || '0'}
-              </div>
-              <div className="col-span-2">
-                <strong>Status:</strong> <StatusBadge status={selectedFundLog.status} />
-              </div>
-              {selectedFundLog.updated_at && (
-                <div>
-                  <strong>Action Date:</strong> {new Date(selectedFundLog.updated_at).toLocaleString()}
-                </div>
-              )}
-              {selectedFundLog.admin_user && (
-                <div>
-                  <strong>Action By:</strong> {selectedFundLog.admin_user?.name} ({selectedFundLog.admin_user?.email})
-                </div>
-              )}
-              <div className="col-span-2">
-                <strong>Reason:</strong> 
-                <p className="mt-1 p-3 bg-gray-50 rounded border">{selectedFundLog.reason || 'No reason provided'}</p>
-              </div>
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[95vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-blue-900">
+                Fund Request Details
+              </h3>
             </div>
-
-            {/* Requested Items */}
-            <h4 className="text-lg font-semibold text-gray-800 mb-3">
-              Requested Items
-            </h4>
-            {selectedFundLog.request_items && selectedFundLog.request_items.length > 0 ? (
-              <table className="w-full border mb-6">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="p-3 text-left text-gray-700">Item Name</th>
-                    <th className="p-3 text-left text-gray-700">Category</th>
-                    <th className="p-3 text-left text-gray-700">Quantity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedFundLog.request_items.map((item, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="p-3 text-gray-700">{item.inventory?.item_name || 'N/A'}</td>
-                      <td className="p-3 text-gray-700">{item.inventory?.category || 'N/A'}</td>
-                      <td className="p-3 text-gray-700">{item.quantity}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-gray-500 mb-6">No items requested.</p>
-            )}
-
-            {/* Attachment */}
-            {selectedFundLog.photo_url && (
-              <div className="mb-6">
-                <h4 className="text-lg font-semibold text-gray-800 mb-3">
-                  Attachment
-                </h4>
-                <img
-                  src={selectedFundLog.photo_url}
-                  alt="Request Attachment"
-                  className="w-full max-h-[400px] object-contain rounded border"
-                />
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Request Info */}
+              <div className="grid grid-cols-2 gap-4 mb-6 text-gray-700">
+                <div>
+                  <strong>Request ID:</strong> {selectedFundLog.request_id}
+                </div>
+                <div>
+                  <strong>Request Date:</strong> {new Date(selectedFundLog.request_date).toLocaleString()}
+                </div>
+                <div>
+                  <strong>User:</strong> {selectedFundLog.user?.name}
+                </div>
+                <div>
+                  <strong>Email:</strong> {selectedFundLog.user?.email}
+                </div>
+                <div>
+                  <strong>Truck:</strong> {selectedFundLog.plate_number}
+                </div>
+                <div>
+                  <strong>Estimated Cost:</strong> ₱{selectedFundLog.estimated_cost || '0'}
+                </div>
+                <div className="col-span-2">
+                  <strong>Status:</strong> <StatusBadge status={selectedFundLog.status} />
+                </div>
+                {selectedFundLog.updated_at && (
+                  <div>
+                    <strong>Action Date:</strong> {new Date(selectedFundLog.updated_at).toLocaleString()}
+                  </div>
+                )}
+                {selectedFundLog.admin_user && (
+                  <div>
+                    <strong>Action By:</strong> {selectedFundLog.admin_user?.name} ({selectedFundLog.admin_user?.email})
+                  </div>
+                )}
+                <div className="col-span-2">
+                  <strong>Reason:</strong> 
+                  <p className="mt-1 p-3 bg-gray-50 rounded border">{selectedFundLog.reason || 'No reason provided'}</p>
+                </div>
               </div>
-            )}
 
-            {/* Close Button */}
-            <div className="flex justify-end">
+              {/* Requested Items */}
+              <h4 className="text-lg font-semibold text-gray-800 mb-3">
+                Requested Items
+              </h4>
+              {selectedFundLog.request_items && selectedFundLog.request_items.length > 0 ? (
+                <table className="w-full border mb-6">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-3 text-left text-gray-700">Item Name</th>
+                      <th className="p-3 text-left text-gray-700">Category</th>
+                      <th className="p-3 text-left text-gray-700">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedFundLog.request_items.map((item, index) => (
+                      <tr key={index} className="border-t">
+                        <td className="p-3 text-gray-700">{item.inventory?.item_name || 'N/A'}</td>
+                        <td className="p-3 text-gray-700">{item.inventory?.category || 'N/A'}</td>
+                        <td className="p-3 text-gray-700">{item.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-gray-500 mb-6">No items requested.</p>
+              )}
+
+              {/* Attachment */}
+              {selectedFundLog.photo_url && (
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">
+                    Attachment
+                  </h4>
+                  <img
+                    src={selectedFundLog.photo_url}
+                    alt="Request Attachment"
+                    className="w-full max-h-[400px] object-contain rounded border"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-gray-200">
               <button
                 onClick={() => setIsFundModalOpen(false)}
                 className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-600"
@@ -526,84 +537,126 @@ export default function AdminRequestPage() {
 
       {/* Profile Log Details Modal */}
       {isProfileModalOpen && selectedProfileLog && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-blue-900 mb-4">
-              Profile Update Request Details
-            </h3>
-
-            {/* User Info */}
-            <div className="grid grid-cols-2 gap-4 mb-6 text-gray-700">
-              <div>
-                <strong>Request ID:</strong> {selectedProfileLog.id}
-              </div>
-              <div>
-                <strong>Request Date:</strong> {new Date(selectedProfileLog.created_at).toLocaleString()}
-              </div>
-              <div>
-                <strong>User:</strong> {selectedProfileLog.users?.full_name}
-              </div>
-              <div>
-                <strong>Email:</strong> {selectedProfileLog.users?.email}
-              </div>
-              <div className="col-span-2">
-                <strong>Status:</strong> <StatusBadge status={selectedProfileLog.status} />
-              </div>
-              {selectedProfileLog.updated_at && (
-                <div>
-                  <strong>Action Date:</strong> {new Date(selectedProfileLog.updated_at).toLocaleString()}
-                </div>
-              )}
-              {selectedProfileLog.admin_user && (
-                <div>
-                  <strong>Action By:</strong> {selectedProfileLog.admin_user?.full_name} ({selectedProfileLog.admin_user?.email})
-                </div>
-              )}
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[95vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-blue-900">
+                Profile Update Request Details
+              </h3>
             </div>
-
-            {/* Changes Comparison */}
-            <h4 className="text-lg font-semibold text-gray-800 mb-3">
-              Requested Changes
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Current Profile */}
-              <div>
-                <h5 className="font-semibold text-gray-700 mb-2">Original Profile</h5>
-                <div className="space-y-2 text-sm">
-                  <div><strong>Name:</strong> {selectedProfileLog.users?.full_name || 'N/A'}</div>
-                  <div><strong>Address:</strong> {selectedProfileLog.users?.address || 'N/A'}</div>
-                  <div><strong>Contact:</strong> {selectedProfileLog.users?.contact_no || 'N/A'}</div>
-                  <div><strong>Position:</strong> {selectedProfileLog.users?.position || 'N/A'}</div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* User Info */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="text-gray-800">
+                  <strong className="text-gray-900">Request ID:</strong> {selectedProfileLog.id}
                 </div>
+                <div className="text-gray-800">
+                  <strong className="text-gray-900">Request Date:</strong> {new Date(selectedProfileLog.created_at).toLocaleString()}
+                </div>
+                <div className="text-gray-800">
+                  <strong className="text-gray-900">User:</strong> {selectedProfileLog.users?.full_name}
+                </div>
+                <div className="text-gray-800">
+                  <strong className="text-gray-900">Email:</strong> {selectedProfileLog.users?.email}
+                </div>
+                <div className="col-span-2 text-gray-800">
+                  <strong className="text-gray-900">Status:</strong> <StatusBadge status={selectedProfileLog.status} />
+                </div>
+                {selectedProfileLog.updated_at && (
+                  <div className="text-gray-800">
+                    <strong className="text-gray-900">Action Date:</strong> {new Date(selectedProfileLog.updated_at).toLocaleString()}
+                  </div>
+                )}
+                {selectedProfileLog.admin_user && (
+                  <div className="text-gray-800">
+                    <strong className="text-gray-900">Action By:</strong> {selectedProfileLog.admin_user?.name} ({selectedProfileLog.admin_user?.email})
+                  </div>
+                )}
               </div>
 
-              {/* Requested Changes */}
-              <div>
-                <h5 className="font-semibold text-gray-700 mb-2">Requested Changes</h5>
-                <div className="space-y-2 text-sm">
-                  <div><strong>Name:</strong> {selectedProfileLog.full_name || 'No change'}</div>
-                  <div><strong>Address:</strong> {selectedProfileLog.address || 'No change'}</div>
-                  <div><strong>Contact:</strong> {selectedProfileLog.contact_no || 'No change'}</div>
-                  <div><strong>Position:</strong> {selectedProfileLog.position || 'No change'}</div>
-                  {selectedProfileLog.photo_url && (
-                    <div>
-                      <strong>New Profile Image:</strong>
-                      <img 
-                        src={selectedProfileLog.photo_url} 
-                        alt="Requested profile" 
-                        className="w-20 h-20 rounded-full mt-2 border"
-                      />
+              {/* Changes Comparison */}
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">
+                Requested Changes
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                {/* Current Profile */}
+                <div>
+                  <h5 className="font-semibold text-gray-900 mb-3 text-lg">Original Profile</h5>
+                  <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div className="text-gray-800">
+                      <strong className="text-gray-900 block text-sm">Name:</strong>
+                      <span className="text-gray-700">{selectedProfileLog.users?.full_name || 'N/A'}</span>
                     </div>
-                  )}
+                    <div className="text-gray-800">
+                      <strong className="text-gray-900 block text-sm">Address:</strong>
+                      <span className="text-gray-700">{selectedProfileLog.users?.address || 'N/A'}</span>
+                    </div>
+                    <div className="text-gray-800">
+                      <strong className="text-gray-900 block text-sm">Contact:</strong>
+                      <span className="text-gray-700">{selectedProfileLog.users?.contact_no || 'N/A'}</span>
+                    </div>
+                    <div className="text-gray-800">
+                      <strong className="text-gray-900 block text-sm">Position:</strong>
+                      <span className="text-gray-700">{selectedProfileLog.users?.position || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requested Changes */}
+                <div>
+                  <h5 className="font-semibold text-gray-900 mb-3 text-lg">Requested Changes</h5>
+                  <div className="space-y-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <div>
+                      <strong className="text-gray-900 block text-sm">Name:</strong>
+                      <span className={selectedProfileLog.full_name ? "text-green-700 font-medium" : "text-gray-600"}>
+                        {selectedProfileLog.full_name || 'No change'}
+                      </span>
+                    </div>
+                    <div>
+                      <strong className="text-gray-900 block text-sm">Address:</strong>
+                      <span className={selectedProfileLog.address ? "text-green-700 font-medium" : "text-gray-600"}>
+                        {selectedProfileLog.address || 'No change'}
+                      </span>
+                    </div>
+                    <div>
+                      <strong className="text-gray-900 block text-sm">Contact:</strong>
+                      <span className={selectedProfileLog.contact_no ? "text-green-700 font-medium" : "text-gray-600"}>
+                        {selectedProfileLog.contact_no || 'No change'}
+                      </span>
+                    </div>
+                    <div>
+                      <strong className="text-gray-900 block text-sm">Position:</strong>
+                      <span className={selectedProfileLog.position ? "text-green-700 font-medium" : "text-gray-600"}>
+                        {selectedProfileLog.position || 'No change'}
+                      </span>
+                    </div>
+                    {selectedProfileLog.photo_url && (
+                      <div>
+                        <strong className="text-gray-900 block text-sm mb-2">New Profile Image:</strong>
+                        <img 
+                          src={selectedProfileLog.photo_url} 
+                          alt="Requested profile" 
+                          className="w-24 h-24 rounded-full border-2 border-blue-300 object-cover"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Close Button */}
-            <div className="flex justify-end">
+              {/* Additional Information */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <h5 className="font-semibold text-yellow-800 mb-2">Note:</h5>
+                <p className="text-yellow-700 text-sm">
+                  This request was {selectedProfileLog.status?.toLowerCase()} by {selectedProfileLog.admin_user?.name || 'an admin '} 
+                  on {selectedProfileLog.updated_at ? new Date(selectedProfileLog.updated_at).toLocaleString() : 'unknown date'}.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
               <button
                 onClick={() => setIsProfileModalOpen(false)}
-                className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-600"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
                 Close
               </button>
