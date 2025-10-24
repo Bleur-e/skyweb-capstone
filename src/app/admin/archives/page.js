@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import supabase from '../../../supabaseClient';
 import { useRouter } from 'next/navigation';
+import Swal from 'sweetalert2';
 
 export default function ArchivePage() {
   const router = useRouter();
@@ -19,13 +20,13 @@ export default function ArchivePage() {
 
   // Get current admin user
   useEffect(() => {
-           const currentAdmin = JSON.parse(sessionStorage.getItem("currentUser"));
-           if (!currentAdmin) {
-             router.push("/");
-             return;
-           }
-           setCurrentAdmin(currentAdmin);
-         }, [router]);
+    const currentAdmin = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!currentAdmin) {
+      router.push("/");
+      return;
+    }
+    setCurrentAdmin(currentAdmin);
+  }, [router]);
 
   // Fetch all archived items
   useEffect(() => {
@@ -54,19 +55,30 @@ export default function ArchivePage() {
 
   // Restore archived item
   async function handleRestore(table, idField, id) {
-    // Map the tab name to actual table name
     const actualTableName = table === 'accounts' ? 'users' : table;
-    
+
     const { error } = await supabase
       .from(actualTableName)
       .update({ is_archived: false, archived_at: null })
       .eq(idField, id);
-    
+
     if (error) {
-      alert(`❌ Failed to restore from ${table}: ${error.message}`);
+      Swal.fire({
+        icon: 'error',
+        title: 'Restore Failed',
+        text: `Failed to restore from ${table}: ${error.message}`,
+        confirmButtonColor: '#8F87F1',
+      });
       return;
     }
-    alert('✅ Item restored successfully!');
+
+    Swal.fire({
+      icon: 'success',
+      title: 'Restored Successfully!',
+      text: 'The item has been restored from archive.',
+      confirmButtonColor: '#8F87F1',
+    });
+
     fetchArchivedItems();
   }
 
@@ -254,7 +266,7 @@ export default function ArchivePage() {
                               </svg>
                               Restore
                             </button>
-                            <button
+                          {/* <button
                               onClick={() => handleDelete(activeTab, idField, itemId)}
                               className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors duration-200 border border-red-200"
                             >
@@ -262,7 +274,7 @@ export default function ArchivePage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
                               Delete
-                            </button>
+                            </button> */}
                           </div>
                         </td>
                       </tr>
