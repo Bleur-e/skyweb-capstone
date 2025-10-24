@@ -11,11 +11,21 @@ const supabase = createClient(
 );
 
 export default function ProfilePage() {
+  const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
+   useEffect(() => {
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentUser(currentUser);
+        }, [router]);
+  
   useEffect(() => {
     const storedUser = sessionStorage.getItem('currentUser');
     if (storedUser) {
@@ -23,6 +33,7 @@ export default function ProfilePage() {
       fetchUserData(parsedUser.username);
     }
   }, []);
+
 
   async function fetchUserData(username) {
     try {

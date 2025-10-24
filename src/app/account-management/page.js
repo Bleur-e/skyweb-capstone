@@ -29,6 +29,7 @@ export default function AccountManagement() {
     newPassword: '',
     confirmNewPassword: ''
   });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     const user = JSON.parse(sessionStorage.getItem("currentUser"));
@@ -49,6 +50,176 @@ export default function AccountManagement() {
     setShowPasswordVerification(true);
   }, [router]);
 
+  // Validation functions
+  const validateFullName = (name) => {
+    if (!name) return '';
+    if (name.length > 50) return 'Full name must be 50 characters or less';
+    if (/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(name)) {
+      return 'Full name cannot contain numbers or symbols';
+    }
+    return '';
+  };
+
+  const validateEmail = (email) => {
+    if (!email) return '';
+    const validDomains = ['@gmail.com', '@yahoo.com', '@hotmail.com'];
+    const isValidDomain = validDomains.some(domain => email.endsWith(domain));
+    if (!isValidDomain) {
+      return 'Email must end with @gmail.com, @yahoo.com, or @hotmail.com';
+    }
+    return '';
+  };
+
+  const validateContactNo = (contact) => {
+    if (!contact) return '';
+    if (!contact.startsWith('09')) {
+      return 'Contact number must start with "09"';
+    }
+    if (contact.length !== 11) {
+      return 'Contact number must be exactly 11 digits';
+    }
+    if (!/^\d+$/.test(contact)) {
+      return 'Contact number must contain only numbers';
+    }
+    return '';
+  };
+
+  const validatePosition = (position) => {
+    if (!position) return '';
+    if (position.length > 20) return 'Position must be 20 characters or less';
+    if (/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(position)) {
+      return 'Position cannot contain numbers or symbols';
+    }
+    return '';
+  };
+
+  const validateUsername = (username) => {
+    if (!username) return 'Username is required';
+    if (username.length < 3) return 'Username must be at least 3 characters';
+    if (username.length > 30) return 'Username must be 30 characters or less';
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return 'Username can only contain letters, numbers, and underscores';
+    }
+    return '';
+  };
+
+  const validatePassword = (password) => {
+    if (!password) return '';
+    if (password.length < 6) return 'Password must be at least 6 characters';
+    return '';
+  };
+
+  // Real-time validation for form fields
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'full_name':
+        return validateFullName(value);
+      case 'email':
+        return validateEmail(value);
+      case 'contact_no':
+        return validateContactNo(value);
+      case 'position':
+        return validatePosition(value);
+      case 'username':
+        return validateUsername(value);
+      case 'password':
+        return validatePassword(value);
+      default:
+        return '';
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Apply input restrictions based on field type
+    let processedValue = value;
+    
+    switch (name) {
+      case 'full_name':
+      case 'position':
+        // Only allow letters and spaces
+        processedValue = value.replace(/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g, '');
+        // Limit length
+        if (name === 'full_name' && value.length > 50) return;
+        if (name === 'position' && value.length > 20) return;
+        break;
+      
+      case 'contact_no':
+        // Only allow numbers and enforce 09 prefix
+        processedValue = value.replace(/\D/g, '');
+        if (processedValue.length > 11) return;
+        // Auto-format to show 09 prefix
+        if (processedValue.length === 1 && processedValue !== '0') {
+          processedValue = '0' + processedValue;
+        }
+        if (processedValue.length === 2 && !processedValue.startsWith('09')) {
+          processedValue = '09';
+        }
+        break;
+      
+      case 'email':
+        // Limit length for email
+        if (value.length > 100) return;
+        break;
+      
+      case 'username':
+        // Only allow alphanumeric and underscore, limit length
+        processedValue = value.replace(/[^a-zA-Z0-9_]/g, '');
+        if (processedValue.length > 30) return;
+        break;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      [name]: processedValue
+    }));
+
+    // Real-time validation
+    const error = validateField(name, processedValue);
+    setErrors(prev => ({
+      ...prev,
+      [name]: error
+    }));
+  };
+
+  const handleContactNoChange = (e) => {
+    const { value } = e.target;
+    const numbersOnly = value.replace(/\D/g, '');
+    
+    let processedValue = numbersOnly;
+    if (numbersOnly.length > 11) {
+      processedValue = numbersOnly.slice(0, 11);
+    }
+    
+    // Ensure it starts with 09
+    if (processedValue.length === 1 && processedValue !== '0') {
+      processedValue = '0' + processedValue;
+    }
+    if (processedValue.length === 2 && !processedValue.startsWith('09')) {
+      processedValue = '09';
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      contact_no: processedValue
+    }));
+
+    const error = validateContactNo(processedValue);
+    setErrors(prev => ({
+      ...prev,
+      contact_no: error
+    }));
+  };
+
+  const handleResetPasswordChange = (e) => {
+    const { name, value } = e.target;
+    setResetPasswordData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   // Fetch only current user for regular users
   const fetchCurrentUserOnly = async (userId) => {
     try {
@@ -58,6 +229,7 @@ export default function AccountManagement() {
         .from('users')
         .select('*')
         .eq('id', userId)
+        .eq('is_archived', false)
         .single();
 
       if (error) throw error;
@@ -86,10 +258,11 @@ export default function AccountManagement() {
     try {
       setLoading(true);
       
-      // Fetch all users from the database
+      // Fetch all active users from the database
       const { data: users, error } = await supabase
         .from('users')
         .select('*')
+        .eq('is_archived', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -136,22 +309,6 @@ export default function AccountManagement() {
     }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleResetPasswordChange = (e) => {
-    const { name, value } = e.target;
-    setResetPasswordData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
   // Start editing a user
   const startEditUser = (user) => {
     // Regular users can only edit their own account
@@ -167,7 +324,7 @@ export default function AccountManagement() {
     }
 
     setEditingUser(user);
-    setFormData({
+    const userData = {
       username: user.username || '',
       password: '',
       confirmPassword: '',
@@ -177,7 +334,19 @@ export default function AccountManagement() {
       contact_no: user.contact_no || '',
       address: user.address || '',
       position: user.position || ''
+    };
+    
+    setFormData(userData);
+    
+    // Validate existing data when starting to edit
+    const newErrors = {};
+    Object.keys(userData).forEach(key => {
+      if (key !== 'password' && key !== 'confirmPassword') {
+        const error = validateField(key, userData[key]);
+        if (error) newErrors[key] = error;
+      }
     });
+    setErrors(newErrors);
   };
 
   // Start resetting password for a user
@@ -215,6 +384,7 @@ export default function AccountManagement() {
       address: '',
       position: ''
     });
+    setErrors({});
   };
 
   // Cancel password reset
@@ -223,11 +393,64 @@ export default function AccountManagement() {
     setResetPasswordData({ newPassword: '', confirmNewPassword: '' });
   };
 
+  // Validate all form data before submission
+  const validateForm = () => {
+    const newErrors = {};
+    
+    // Required fields validation
+    if (!formData.username.trim()) {
+      newErrors.username = 'Username is required';
+    } else {
+      const usernameError = validateUsername(formData.username);
+      if (usernameError) newErrors.username = usernameError;
+    }
+
+    // Optional fields validation
+    if (formData.full_name) {
+      const fullNameError = validateFullName(formData.full_name);
+      if (fullNameError) newErrors.full_name = fullNameError;
+    }
+
+    if (formData.email) {
+      const emailError = validateEmail(formData.email);
+      if (emailError) newErrors.email = emailError;
+    }
+
+    if (formData.contact_no) {
+      const contactError = validateContactNo(formData.contact_no);
+      if (contactError) newErrors.contact_no = contactError;
+    }
+
+    if (formData.position) {
+      const positionError = validatePosition(formData.position);
+      if (positionError) newErrors.position = positionError;
+    }
+
+    // Password validation (only if password is being changed)
+    if (formData.password) {
+      const passwordError = validatePassword(formData.password);
+      if (passwordError) newErrors.password = passwordError;
+      
+      if (formData.password !== formData.confirmPassword) {
+        newErrors.confirmPassword = 'Passwords do not match';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   // Update user information
   const updateUser = async (e) => {
     e.preventDefault();
     
     if (!editingUser) return;
+
+    // Validate form before submission
+    if (!validateForm()) {
+      showToast('Please fix the validation errors before saving', 'error');
+      return;
+    }
 
     try {
       let updates = {
@@ -292,15 +515,16 @@ export default function AccountManagement() {
       setEditingUser(null);
       setFormData({ 
         username: '', 
-      password: '', 
-      confirmPassword: '', 
-      role: 'user',
-      full_name: '',
-      email: '',
-      contact_no: '',
-      address: '',
-      position: ''
-    });
+        password: '', 
+        confirmPassword: '', 
+        role: 'user',
+        full_name: '',
+        email: '',
+        contact_no: '',
+        address: '',
+        position: ''
+      });
+      setErrors({});
       
       // Refresh users list
       if (currentUser.role === 'admin') {
@@ -350,44 +574,97 @@ export default function AccountManagement() {
     }
   };
 
-  // Delete user - Only for admins and cannot delete other admins
-  const deleteUser = async (userId) => {
+  // Archive user - Only for admins and cannot archive other admins
+  const archiveUser = async (userId) => {
     if (currentUser.role !== 'admin') {
-      showToast('Only administrators can delete users', 'error');
+      showToast('Only administrators can archive users', 'error');
       return;
     }
 
     if (userId === currentUser.id) {
-      showToast('You cannot delete your own account', 'error');
+      showToast('You cannot archive your own account', 'error');
       return;
     }
 
     // Find the user to check if they're an admin
-    const userToDelete = users.find(user => user.id === userId);
-    if (userToDelete && userToDelete.role === 'admin') {
-      showToast('You cannot delete other admin accounts', 'error');
+    const userToArchive = users.find(user => user.id === userId);
+    if (userToArchive && userToArchive.role === 'admin') {
+      showToast('You cannot archive other admin accounts', 'error');
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to archive this user? They will no longer appear in active users but can be restored from archives.')) {
       return;
     }
 
     try {
-      // Delete user from database
+      // Archive user in database
       const { error } = await supabase
         .from('users')
-        .delete()
+        .update({ 
+          is_archived: true,
+          archived_at: new Date().toISOString()
+        })
         .eq('id', userId);
 
       if (error) throw error;
 
-      showToast('User deleted successfully', 'success');
+      showToast('User archived successfully', 'success');
       fetchUsers(); // Refresh users list
     } catch (error) {
-      console.error('Error deleting user:', error);
-      showToast('Error deleting user', 'error');
+      console.error('Error archiving user:', error);
+      showToast('Error archiving user', 'error');
     }
+  };
+
+  // Validate create user form
+  const validateCreateForm = () => {
+    const newErrors = {};
+    
+    // Required fields for creation
+    if (!formData.username.trim()) {
+      newErrors.username = 'Username is required';
+    } else {
+      const usernameError = validateUsername(formData.username);
+      if (usernameError) newErrors.username = usernameError;
+    }
+
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else {
+      const passwordError = validatePassword(formData.password);
+      if (passwordError) newErrors.password = passwordError;
+    }
+
+    if (!formData.confirmPassword) {
+      newErrors.confirmPassword = 'Please confirm password';
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+
+    // Optional fields validation
+    if (formData.full_name) {
+      const fullNameError = validateFullName(formData.full_name);
+      if (fullNameError) newErrors.full_name = fullNameError;
+    }
+
+    if (formData.email) {
+      const emailError = validateEmail(formData.email);
+      if (emailError) newErrors.email = emailError;
+    }
+
+    if (formData.contact_no) {
+      const contactError = validateContactNo(formData.contact_no);
+      if (contactError) newErrors.contact_no = contactError;
+    }
+
+    if (formData.position) {
+      const positionError = validatePosition(formData.position);
+      if (positionError) newErrors.position = positionError;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   // Create new user - Only for admins and cannot create admin accounts
@@ -406,19 +683,9 @@ export default function AccountManagement() {
       return;
     }
 
-    // Validation
-    if (formData.password !== formData.confirmPassword) {
-      showToast('Passwords do not match', 'error');
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      showToast('Password must be at least 6 characters', 'error');
-      return;
-    }
-
-    if (!formData.username || formData.username.length < 3) {
-      showToast('Username must be at least 3 characters', 'error');
+    // Validate form before submission
+    if (!validateCreateForm()) {
+      showToast('Please fix the validation errors before creating user', 'error');
       return;
     }
 
@@ -433,6 +700,7 @@ export default function AccountManagement() {
         contact_no: formData.contact_no || null,
         address: formData.address || null,
         position: formData.position || null,
+        is_archived: false,
         created_at: new Date().toISOString()
       };
 
@@ -470,6 +738,7 @@ export default function AccountManagement() {
         address: '',
         position: ''
       });
+      setErrors({});
       
       // Refresh users list
       fetchUsers();
@@ -486,7 +755,57 @@ export default function AccountManagement() {
     }
   };
 
-    // Password Verification Form for Admins
+  // Helper function to render input field with validation
+  const renderInputField = (field) => {
+    const fieldConfig = {
+      full_name: { label: 'Full Name', placeholder: 'Enter full name', type: 'text', maxLength: 50 },
+      email: { label: 'Email', placeholder: 'Enter email', type: 'email', maxLength: 100 },
+      contact_no: { label: 'Contact Number', placeholder: '09XXXXXXXXX', type: 'tel', maxLength: 11 },
+      position: { label: 'Position', placeholder: 'Enter position', type: 'text', maxLength: 20 },
+      username: { label: 'Username *', placeholder: 'Enter username', type: 'text', maxLength: 30 },
+      password: { label: 'Password *', placeholder: 'Enter password', type: 'password' },
+      confirmPassword: { label: 'Confirm Password *', placeholder: 'Confirm password', type: 'password' }
+    };
+
+    const config = fieldConfig[field];
+    if (!config) return null;
+
+    return (
+      <div>
+        <label className="block text-sm font-bold text-gray-700 mb-2">
+          {config.label}
+        </label>
+        <input
+          type={config.type}
+          name={field}
+          value={formData[field]}
+          onChange={field === 'contact_no' ? handleContactNoChange : handleInputChange}
+          placeholder={config.placeholder}
+          className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900 ${
+            errors[field] ? 'border-red-500' : 'border-gray-300'
+          }`}
+          maxLength={config.maxLength}
+          required={field === 'username' || field === 'password' || field === 'confirmPassword'}
+          minLength={field === 'password' ? 6 : undefined}
+        />
+        {errors[field] && (
+          <p className="text-red-500 text-xs mt-1 font-medium">{errors[field]}</p>
+        )}
+        {field === 'contact_no' && (
+          <p className="text-xs text-gray-600 mt-1">
+            Must start with "09" and be exactly 11 digits total
+          </p>
+        )}
+        {field === 'email' && (
+          <p className="text-xs text-gray-600 mt-1">
+            Must end with @gmail.com, @yahoo.com, or @hotmail.com
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Password Verification Form for Admins
   if (showPasswordVerification && currentUser?.role === 'admin') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-800 flex items-center justify-center p-4">
@@ -596,21 +915,7 @@ export default function AccountManagement() {
               
               <form onSubmit={createUser} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Username *
-                    </label>
-                    <input
-                      type="text"
-                      name="username"
-                      value={formData.username}
-                      onChange={handleInputChange}
-                      placeholder="Enter username"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                      minLength="3"
-                      required
-                    />
-                  </div>
+                  {renderInputField('username')}
 
                   {/* Role field removed for admin creation - all new users are 'user' role */}
                   <div>
@@ -623,61 +928,10 @@ export default function AccountManagement() {
                     <input type="hidden" name="role" value="user" />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      name="full_name"
-                      value={formData.full_name}
-                      onChange={handleInputChange}
-                      placeholder="Enter full name"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="Enter email"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Contact Number
-                    </label>
-                    <input
-                      type="text"
-                      name="contact_no"
-                      value={formData.contact_no}
-                      onChange={handleInputChange}
-                      placeholder="Enter contact number"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Position
-                    </label>
-                    <input
-                      type="text"
-                      name="position"
-                      value={formData.position}
-                      onChange={handleInputChange}
-                      placeholder="Enter position"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                    />
-                  </div>
+                  {renderInputField('full_name')}
+                  {renderInputField('email')}
+                  {renderInputField('contact_no')}
+                  {renderInputField('position')}
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-bold text-gray-700 mb-2">
@@ -693,37 +947,8 @@ export default function AccountManagement() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Password *
-                    </label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="Enter password"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                      minLength="6"
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Confirm Password *
-                    </label>
-                    <input
-                      type="password"
-                      name="confirmPassword"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      placeholder="Confirm password"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                      minLength="6"
-                      required
-                    />
-                  </div>
+                  {renderInputField('password')}
+                  {renderInputField('confirmPassword')}
                 </div>
                 
                 <div className="flex justify-end">
@@ -743,10 +968,10 @@ export default function AccountManagement() {
           <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-900">
-                {currentUser?.role === 'admin' ? 'All Users' : 'My Account Information'}
+                {currentUser?.role === 'admin' ? 'Active Users' : 'My Account Information'}
               </h3>
               <span className="text-sm font-bold text-gray-600 bg-gray-100 px-3 py-2 rounded-full">
-                {users.length} {currentUser?.role === 'admin' ? 'users total' : 'account'}
+                {users.length} {currentUser?.role === 'admin' ? 'active users' : 'account'}
               </span>
             </div>
 
@@ -762,7 +987,7 @@ export default function AccountManagement() {
             ) : users.length === 0 ? (
               <div className="text-center py-8">
                 <i className="fas fa-users text-4xl text-gray-300 mb-3"></i>
-                <p className="text-gray-500 font-bold text-lg">No users found</p>
+                <p className="text-gray-500 font-bold text-lg">No active users found</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -772,19 +997,7 @@ export default function AccountManagement() {
                       // Edit Form
                       <form onSubmit={updateUser} className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              Username *
-                            </label>
-                            <input
-                              type="text"
-                              name="username"
-                              value={formData.username}
-                              onChange={handleInputChange}
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                              required
-                            />
-                          </div>
+                          {renderInputField('username')}
 
                           {/* Role field - Only visible to admins and only for non-admin users */}
                           {currentUser?.role === 'admin' && user.role !== 'admin' && (
@@ -817,57 +1030,10 @@ export default function AccountManagement() {
                             </div>
                           )}
 
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              Full Name
-                            </label>
-                            <input
-                              type="text"
-                              name="full_name"
-                              value={formData.full_name}
-                              onChange={handleInputChange}
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              Email
-                            </label>
-                            <input
-                              type="email"
-                              name="email"
-                              value={formData.email}
-                              onChange={handleInputChange}
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              Contact Number
-                            </label>
-                            <input
-                              type="text"
-                              name="contact_no"
-                              value={formData.contact_no}
-                              onChange={handleInputChange}
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              Position
-                            </label>
-                            <input
-                              type="text"
-                              name="position"
-                              value={formData.position}
-                              onChange={handleInputChange}
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                            />
-                          </div>
+                          {renderInputField('full_name')}
+                          {renderInputField('email')}
+                          {renderInputField('contact_no')}
+                          {renderInputField('position')}
 
                           <div className="md:col-span-2">
                             <label className="block text-sm font-bold text-gray-700 mb-2">
@@ -882,33 +1048,8 @@ export default function AccountManagement() {
                             />
                           </div>
 
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              New Password
-                            </label>
-                            <input
-                              type="password"
-                              name="password"
-                              value={formData.password}
-                              onChange={handleInputChange}
-                              placeholder="Leave blank to keep current"
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                            />
-                          </div>
-                          
-                          <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">
-                              Confirm Password
-                            </label>
-                            <input
-                              type="password"
-                              name="confirmPassword"
-                              value={formData.confirmPassword}
-                              onChange={handleInputChange}
-                              placeholder="Confirm new password"
-                              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-gray-900"
-                            />
-                          </div>
+                          {renderInputField('password')}
+                          {renderInputField('confirmPassword')}
                         </div>
                         
                         <div className="flex justify-end space-x-3">
@@ -1053,15 +1194,15 @@ export default function AccountManagement() {
                             </button>
                           )}
                           
-                          {/* Delete button - Only for admins, not for current user, and not for other admins */}
+                          {/* Archive button - Only for admins, not for current user, and not for other admins */}
                           {currentUser?.role === 'admin' && user.id !== currentUser?.id && user.role !== 'admin' && (
                             <button
-                              onClick={() => deleteUser(user.id)}
-                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-bold text-sm shadow-md"
-                              title="Delete User"
+                              onClick={() => archiveUser(user.id)}
+                              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-bold text-sm shadow-md"
+                              title="Archive User"
                             >
-                              <i className="fas fa-trash mr-1"></i>
-                              Delete
+                              <i className="fas fa-archive mr-1"></i>
+                              Archive
                             </button>
                           )}
                         </div>

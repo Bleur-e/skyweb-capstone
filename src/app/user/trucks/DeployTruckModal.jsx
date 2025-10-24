@@ -132,8 +132,27 @@ export default function DeployTruckModal({
     ]);
   };
 
-  // Check if truck can be deployed based on oil change status
+  // Check if truck can be deployed based on various conditions
   const canDeployTruck = () => {
+    // Check if truck has no driver assigned
+    if (!truck.driver) {
+      showAlertPopup("No driver assigned to this truck. Please assign a driver first.");
+      return false;
+    }
+
+    // Check if truck is in maintenance
+    if (truck.status === "Maintenance") {
+      showAlertPopup("Cannot deploy: Truck is currently in maintenance.");
+      return false;
+    }
+
+    // Check if truck is scheduled
+    if (truck.status === "Scheduled") {
+      showAlertPopup("Cannot deploy: Truck is currently scheduled for deployment.");
+      return false;
+    }
+
+    // Check oil change status
     if (!oilChangeInfo) return true;
 
     const { remainingDistance } = oilChangeInfo;
@@ -157,8 +176,9 @@ export default function DeployTruckModal({
     setIsDeploying(true);
 
     try {
-      if (!truck.driver) {
-        showAlertPopup("No driver assigned to this truck. Please assign a driver first.");
+      // Double check status conditions before deploying
+      if (truck.status === "Maintenance" || truck.status === "Scheduled") {
+        showAlertPopup(`Cannot deploy: Truck is currently in ${truck.status.toLowerCase()}.`);
         setIsDeploying(false);
         return;
       }
@@ -166,7 +186,7 @@ export default function DeployTruckModal({
       // Check oil change status one more time before deploying
       const { data: truckData, error: fetchError } = await supabase
         .from("trucks")
-        .select("current_odometer, next_change_oil_odometer")
+        .select("current_odometer, next_change_oil_odometer, status")
         .eq("plate_number", truck.plate_number)
         .single();
 
@@ -454,11 +474,11 @@ export default function DeployTruckModal({
 
     return (
       <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
-        <h4 className="font-semibold text-gray-700 mb-2">Oil Change Status</h4>
-        <p className="text-sm">
+        <h4 className="font-semibold text-gray-800 mb-2">Oil Change Status</h4>
+        <p className="text-sm text-gray-700">
           <span className="font-medium">Current:</span> {currentOdometer.toLocaleString()} km
         </p>
-        <p className="text-sm">
+        <p className="text-sm text-gray-700">
           <span className="font-medium">Next Change:</span> {nextChangeOdometer.toLocaleString()} km
         </p>
         <p className={`text-sm font-medium ${statusColor} mt-1`}>
@@ -477,7 +497,7 @@ export default function DeployTruckModal({
               <X size={20} />
             </button>
 
-            <h3 className="text-lg font-semibold mb-4 text-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">
               Truck: {truck.plate_number}
             </h3>
 
@@ -485,7 +505,7 @@ export default function DeployTruckModal({
 
             {truck.status !== "Deployed" ? (
               <>
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="text-sm text-gray-700 mb-4">
                   Deploy this truck for use. The odometer will be updated when the truck is returned.
                 </p>
                 <div className="flex justify-end gap-2">
@@ -515,7 +535,7 @@ export default function DeployTruckModal({
                 </p>
                 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-800 mb-2">
                     Enter Current Odometer Reading (km)
                   </label>
                   <input
@@ -523,10 +543,10 @@ export default function DeployTruckModal({
                     min={truck.current_odometer}
                     value={returnOdometer}
                     onChange={(e) => setReturnOdometer(e.target.value)}
-                    className="w-full border border-gray-300 rounded p-2 text-gray-700"
+                    className="w-full border border-gray-300 rounded p-2 text-gray-800 placeholder-gray-500"
                     placeholder={`Minimum: ${truck.current_odometer} km`}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-600 mt-1">
                     Current odometer: {truck.current_odometer?.toLocaleString()} km
                   </p>
                 </div>

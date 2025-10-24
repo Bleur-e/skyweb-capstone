@@ -27,6 +27,7 @@ ChartJS.register(
 export default function UserDashboard({ children }) {
 
   const router = useRouter();
+  
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [activeTab, setActiveTab] = useState('calendar');
@@ -44,12 +45,12 @@ export default function UserDashboard({ children }) {
   const [scheduledLoading, setScheduledLoading] = useState(false);
 
   useEffect(() => {
-    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
-    if (!currentUser) {
+    const storedUser = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!storedUser) {
       router.push("/");
       return;
     }
-    if (currentUser.role !== "user") {
+    if (storedUser.role !== "user") {
       router.push("/");
       return;
     }
@@ -97,7 +98,8 @@ export default function UserDashboard({ children }) {
           *,
           trucks (
             plate_number,
-            current_odometer
+            current_odometer,
+            status
           ),
           maintenance_mechanics (
             mechanics (
@@ -121,6 +123,7 @@ export default function UserDashboard({ children }) {
         date: item.date,
         plate_number: item.trucks?.plate_number,
         current_odometer: item.trucks?.current_odometer,
+        truck_status: item.trucks?.status,
         mechanics: item.maintenance_mechanics?.map(mm => mm.mechanics) || [],
         driver_details: item.driver_details,
         mechanic_name: item.mechanic_name
@@ -145,7 +148,7 @@ export default function UserDashboard({ children }) {
         .from('maintenance')
         .select(`
           *,
-          trucks (plate_number, current_odometer),
+          trucks (plate_number, current_odometer, status),
           maintenance_mechanics (
             mechanics (name)
           )
@@ -172,7 +175,8 @@ export default function UserDashboard({ children }) {
           plate_number: item.plate_number,
           date: item.date,
           driver_details: item.driver_details,
-          mechanic_name: item.mechanic_name
+          mechanic_name: item.mechanic_name,
+          truck_status: item.trucks?.status
         });
       });
 
@@ -206,11 +210,13 @@ export default function UserDashboard({ children }) {
     }
   };
 
+  // ✅ UPDATED: Fetch only non-archived trucks
   const fetchTrucks = async () => {
     const { data, error } = await supabase
       .from('trucks')
-      .select('*');
-    if (!error) setTrucks(data);
+      .select('*')
+      .eq('is_archived', false); // Only get non-archived trucks
+    if (!error) setTrucks(data || []);
   };
 
   const fetchGraphData = async () => {
@@ -411,6 +417,15 @@ export default function UserDashboard({ children }) {
                     <h4 className="font-bold text-gray-900">Truck {item.plate_number}</h4>
                     <p className="text-gray-700 font-medium">{item.maintenance_type}</p>
                     <p className="text-gray-600 text-sm mt-1">{item.description}</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Truck Status: <span className={`font-semibold ${
+                        item.truck_status === 'Available' ? 'text-green-600' :
+                        item.truck_status === 'Maintenance' ? 'text-red-600' :
+                        item.truck_status === 'Scheduled' ? 'text-yellow-600' : 'text-gray-600'
+                      }`}>
+                        {item.truck_status}
+                      </span>
+                    </p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(item.status)}`}>
                     {item.status}
@@ -643,6 +658,15 @@ export default function UserDashboard({ children }) {
                     <h4 className="font-bold text-lg text-gray-900 mb-1">{item.vehicle}</h4>
                     <p className="text-gray-700 font-medium">{item.type}</p>
                     <p className="text-gray-600 text-sm mt-1">{item.description}</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Truck Status: <span className={`font-semibold ${
+                        item.truck_status === 'Available' ? 'text-green-600' :
+                        item.truck_status === 'Maintenance' ? 'text-red-600' :
+                        item.truck_status === 'Scheduled' ? 'text-yellow-600' : 'text-gray-600'
+                      }`}>
+                        {item.truck_status}
+                      </span>
+                    </p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(item.status)}`}>
                     {item.status}
@@ -722,80 +746,253 @@ export default function UserDashboard({ children }) {
     );
   };
 
-  // Maintenance Actions
+  // ✅ FIXED: Mark as Done function - removed non-existent column
   const markAsDone = async (maintenanceId, plateNumber, maintenanceType) => {
     try {
-      const storedUser = JSON.parse(localStorage.getItem('currentUser'));
+      console.log('🔧 Starting markAsDone:', { maintenanceId, plateNumber, maintenanceType });
+      
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
       if (!storedUser?.id) {
         showToast('You must be logged in to mark maintenance as done', 'error');
         return;
       }
 
-      // Update maintenance to completed
-      const { error: updateError } = await supabase
+      // Step 1: Update maintenance status to Completed
+      console.log('📝 Step 1: Updating maintenance status...');
+      const { data: updateData, error: updateError } = await supabase
         .from('maintenance')
         .update({
           status: 'Completed',
           completed_at: new Date().toISOString(),
           completed_by: storedUser.id,
         })
-        .eq('maintenance_id', maintenanceId);
-      
-      if (updateError) throw updateError;
+        .eq('maintenance_id', maintenanceId)
+        .select();
 
-      // Update truck status back to Available
-      await supabase.from('trucks').update({ status: 'Available' }).eq('plate_number', plateNumber);
+      if (updateError) {
+        console.error('❌ Update error:', updateError);
+        throw new Error(`Failed to update maintenance: ${updateError.message}`);
+      }
 
-      showToast(`Maintenance for ${plateNumber} marked as completed`, 'success');
-      fetchMaintenanceData();
-      fetchTrucks();
-      fetchAllMaintenanceData();
-      // Refresh scheduled list if it's open
-      if (showScheduledList) {
-        fetchScheduledMaintenance();
+      console.log('✅ Maintenance updated:', updateData);
+
+      // Step 2: Check for other pending maintenance for this truck
+      console.log('🔍 Step 2: Checking for other maintenance...');
+      const { data: pendingMaintenance, error: pendingError } = await supabase
+        .from('maintenance')
+        .select('maintenance_id, date')
+        .eq('plate_number', plateNumber)
+        .eq('status', 'Scheduled');
+
+      if (pendingError) {
+        console.error('❌ Pending check error:', pendingError);
+        throw new Error(`Failed to check pending maintenance: ${pendingError.message}`);
       }
-      // Refresh graph data if we're on analytics tab
-      if (activeTab === 'analytics') {
-        fetchGraphData();
+
+      console.log('📋 Pending maintenance found:', pendingMaintenance);
+
+      // Step 3: Determine truck status
+      let newTruckStatus = 'Available';
+      let message = `Maintenance for ${plateNumber} completed. Truck is now Available.`;
+
+      if (pendingMaintenance && pendingMaintenance.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const hasMaintenanceToday = pendingMaintenance.some(m => {
+          const maintenanceDate = new Date(m.date).toISOString().split('T')[0];
+          return maintenanceDate === today;
+        });
+
+        newTruckStatus = hasMaintenanceToday ? 'Maintenance' : 'Scheduled';
+        message = `Maintenance for ${plateNumber} completed. ${pendingMaintenance.length} more maintenance scheduled. Truck status: ${newTruckStatus}.`;
       }
-    } catch (err) {
-      console.error("❌ Error marking maintenance as done:", err);
-      showToast('Failed to mark maintenance as done', 'error');
+
+      console.log('🚛 Step 3: Updating truck status to:', newTruckStatus);
+
+      // Step 4: Update truck status (ONLY status field - no last_maintenance_date)
+      const { error: truckError } = await supabase
+        .from('trucks')
+        .update({ 
+          status: newTruckStatus
+          // Removed last_maintenance_date since it doesn't exist in the table
+        })
+        .eq('plate_number', plateNumber);
+
+      if (truckError) {
+        console.error('❌ Truck update error:', truckError);
+        throw new Error(`Failed to update truck status: ${truckError.message}`);
+      }
+
+      console.log('✅ Truck status updated successfully');
+
+      // Step 5: Show success message and refresh data
+      showToast(message, 'success');
+
+      // Refresh all data
+      await Promise.all([
+        fetchMaintenanceData(),
+        fetchTrucks(),
+        fetchAllMaintenanceData(),
+        showScheduledList && fetchScheduledMaintenance()
+      ]);
+
+      console.log('✅ All data refreshed successfully');
+
+    } catch (error) {
+      console.error('❌ markAsDone error:', error);
+      showToast(`Failed to mark maintenance as done: ${error.message}`, 'error');
     }
   };
 
+  // ✅ FIXED: Cancel Maintenance function - removed non-existent column
   const cancelMaintenance = async (maintenanceId) => {
     try {
-      // Return items to inventory
+      console.log('🗑️ Starting cancelMaintenance:', maintenanceId);
+      
+      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+      if (!storedUser?.id) {
+        showToast('You must be logged in to cancel maintenance', 'error');
+        return;
+      }
+
+      // Step 1: Get maintenance details first
+      console.log('📋 Step 1: Getting maintenance details...');
+      const { data: maintenance, error: fetchError } = await supabase
+        .from('maintenance')
+        .select('plate_number, date')
+        .eq('maintenance_id', maintenanceId)
+        .single();
+
+      if (fetchError) {
+        console.error('❌ Fetch error:', fetchError);
+        throw new Error(`Maintenance not found: ${fetchError.message}`);
+      }
+
+      if (!maintenance) {
+        throw new Error('Maintenance record not found');
+      }
+
+      const plateNumber = maintenance.plate_number;
+      console.log('🚛 Maintenance found for truck:', plateNumber);
+
+      // Step 2: Return items to inventory (if any)
+      console.log('📦 Step 2: Returning items to inventory...');
       const { data: usedItems, error: itemsError } = await supabase
         .from('maintenance_items')
         .select('item_id, quantity')
         .eq('maintenance_id', maintenanceId);
-      
-      if (!itemsError && usedItems) {
+
+      if (itemsError) {
+        console.error('❌ Items fetch error:', itemsError);
+        // Continue with cancellation even if items fail
+      } else if (usedItems && usedItems.length > 0) {
+        console.log('📦 Items to return:', usedItems);
         for (const item of usedItems) {
-          await supabase.rpc('increment_inventory_quantity', {
+          const { error: returnError } = await supabase.rpc('increment_inventory_quantity', {
             item_id_input: item.item_id,
             qty_input: item.quantity,
           });
+
+          if (returnError) {
+            console.error('❌ Item return error:', returnError);
+            // Continue with cancellation even if item return fails
+          }
         }
       }
 
-      // Delete maintenance records
-      await supabase.from('maintenance_items').delete().eq('maintenance_id', maintenanceId);
-      await supabase.from('maintenance_mechanics').delete().eq('maintenance_id', maintenanceId);
-      await supabase.from('maintenance').delete().eq('maintenance_id', maintenanceId);
+      // Step 3: Delete maintenance records
+      console.log('🗑️ Step 3: Deleting maintenance records...');
+      
+      // Delete in correct order to respect foreign key constraints
+      const { error: itemsDeleteError } = await supabase
+        .from('maintenance_items')
+        .delete()
+        .eq('maintenance_id', maintenanceId);
 
-      showToast('Maintenance canceled and items returned to inventory', 'success');
-      fetchMaintenanceData();
-      fetchAllMaintenanceData();
-      // Refresh scheduled list if it's open
-      if (showScheduledList) {
-        fetchScheduledMaintenance();
+      if (itemsDeleteError) {
+        console.error('❌ Items delete error:', itemsDeleteError);
       }
-    } catch (err) {
-      console.error('Cancel error:', err);
-      showToast('Failed to cancel maintenance', 'error');
+
+      const { error: mechanicsDeleteError } = await supabase
+        .from('maintenance_mechanics')
+        .delete()
+        .eq('maintenance_id', maintenanceId);
+
+      if (mechanicsDeleteError) {
+        console.error('❌ Mechanics delete error:', mechanicsDeleteError);
+      }
+
+      const { error: maintenanceDeleteError } = await supabase
+        .from('maintenance')
+        .delete()
+        .eq('maintenance_id', maintenanceId);
+
+      if (maintenanceDeleteError) {
+        console.error('❌ Maintenance delete error:', maintenanceDeleteError);
+        throw new Error(`Failed to delete maintenance: ${maintenanceDeleteError.message}`);
+      }
+
+      console.log('✅ Maintenance records deleted');
+
+      // Step 4: Check for other pending maintenance and update truck status
+      console.log('🔍 Step 4: Checking for other maintenance...');
+      const { data: pendingMaintenance, error: pendingError } = await supabase
+        .from('maintenance')
+        .select('maintenance_id, date')
+        .eq('plate_number', plateNumber)
+        .eq('status', 'Scheduled');
+
+      if (pendingError) {
+        console.error('❌ Pending check error:', pendingError);
+        throw new Error(`Failed to check pending maintenance: ${pendingError.message}`);
+      }
+
+      console.log('📋 Pending maintenance:', pendingMaintenance);
+
+      let newTruckStatus = 'Available';
+      let message = 'Maintenance canceled. Truck is now Available.';
+
+      if (pendingMaintenance && pendingMaintenance.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const hasMaintenanceToday = pendingMaintenance.some(m => {
+          const maintenanceDate = new Date(m.date).toISOString().split('T')[0];
+          return maintenanceDate === today;
+        });
+
+        newTruckStatus = hasMaintenanceToday ? 'Maintenance' : 'Scheduled';
+        message = `Maintenance canceled. ${pendingMaintenance.length} more maintenance scheduled. Truck status: ${newTruckStatus}.`;
+      }
+
+      console.log('🚛 Step 5: Updating truck status to:', newTruckStatus);
+
+      // Step 5: Update truck status (ONLY status field)
+      const { error: truckError } = await supabase
+        .from('trucks')
+        .update({ status: newTruckStatus })
+        .eq('plate_number', plateNumber);
+
+      if (truckError) {
+        console.error('❌ Truck update error:', truckError);
+        throw new Error(`Failed to update truck status: ${truckError.message}`);
+      }
+
+      console.log('✅ Truck status updated');
+
+      // Step 6: Show success and refresh data
+      showToast(message, 'success');
+
+      // Refresh all data
+      await Promise.all([
+        fetchMaintenanceData(),
+        fetchTrucks(),
+        fetchAllMaintenanceData(),
+        showScheduledList && fetchScheduledMaintenance()
+      ]);
+
+      console.log('✅ All data refreshed after cancellation');
+
+    } catch (error) {
+      console.error('❌ cancelMaintenance error:', error);
+      showToast(`Failed to cancel maintenance: ${error.message}`, 'error');
     }
   };
 
@@ -1095,15 +1292,27 @@ export default function UserDashboard({ children }) {
     );
   };
 
+  // ✅ UPDATED: Vehicle Availability with proper filtering and counts
   const renderAvailabilityTab = () => {
-    const availableCount = trucks.filter(v => v.status === 'Available').length;
-    const maintenanceCount = trucks.filter(v => v.status === 'Maintenance').length;
-    const totalCount = trucks.length;
+    // Filter out archived trucks and count by status
+    const availableCount = trucks.filter(truck => 
+      truck.status === 'Available' && !truck.is_archived
+    ).length;
+    
+    const maintenanceCount = trucks.filter(truck => 
+      truck.status === 'Maintenance' && !truck.is_archived
+    ).length;
+    
+    const scheduledCount = trucks.filter(truck => 
+      truck.status === 'Scheduled' && !truck.is_archived
+    ).length;
+    
+    const totalCount = trucks.filter(truck => !truck.is_archived).length;
 
     return (
       <div className="space-y-6">
-        {/* Availability Overview - FIXED COLORS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Availability Overview - ENHANCED WITH SCHEDULED STATUS */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
@@ -1139,9 +1348,21 @@ export default function UserDashboard({ children }) {
               </div>
             </div>
           </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-600 text-sm font-medium">Scheduled</p>
+                <p className="text-3xl font-bold text-gray-900 mt-2">{scheduledCount}</p>
+              </div>
+              <div className="p-3 bg-yellow-500 rounded-xl">
+                <i className="fas fa-calendar text-white text-xl"></i>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Quick Stats */}
+        {/* Enhanced Quick Stats */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Availability Overview</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1156,8 +1377,12 @@ export default function UserDashboard({ children }) {
                   <span className="text-gray-600">Vehicles in Maintenance</span>
                   <span className="font-bold text-red-600">{maintenanceCount}</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Scheduled for Maintenance</span>
+                  <span className="font-bold text-yellow-600">{scheduledCount}</span>
+                </div>
                 <div className="flex justify-between items-center border-t pt-2">
-                  <span className="text-gray-700 font-medium">Total Fleet</span>
+                  <span className="text-gray-700 font-medium">Total Active Fleet</span>
                   <span className="font-bold text-gray-900">{totalCount}</span>
                 </div>
               </div>
@@ -1192,6 +1417,9 @@ export default function UserDashboard({ children }) {
                   </div>
                 </div>
               </div>
+              <p className="text-center text-sm text-gray-600 mt-2">
+                {availableCount} of {totalCount} vehicles available
+              </p>
             </div>
           </div>
         </div>

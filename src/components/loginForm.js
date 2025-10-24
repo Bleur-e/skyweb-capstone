@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import supabase from "../supabaseClient"; 
+import Swal from 'sweetalert2';
 
 export default function LoginForm() {
   const [username, setUsername] = useState("");
@@ -28,39 +29,137 @@ export default function LoginForm() {
   const router = useRouter();
 
   // Enhanced currentUser storage helper using sessionStorage
-const storeCurrentUser = (userData) => {
-  const safeUser = {
-    id: userData.id,
-    username: userData.username,
-    full_name: userData.full_name,
-    role: userData.role,
-    account_photo: userData.account_photo || null,
-    isPowerUser: userData.isPowerUser || false,
-    loginTime: new Date().toISOString(), // timestamp for validation
+  const storeCurrentUser = (userData) => {
+    const safeUser = {
+      id: userData.id,
+      username: userData.username,
+      full_name: userData.full_name,
+      role: userData.role,
+      account_photo: userData.account_photo || null,
+      isPowerUser: userData.isPowerUser || false,
+      loginTime: new Date().toISOString(), // timestamp for validation
+    };
+    sessionStorage.setItem("currentUser", JSON.stringify(safeUser));
+    return safeUser;
   };
-  sessionStorage.setItem("currentUser", JSON.stringify(safeUser));
-  return safeUser;
-};
 
-// Enhanced get current user helper using sessionStorage
-const getCurrentUser = () => {
-  try {
-    const storedUser = sessionStorage.getItem("currentUser");
-    if (!storedUser) return null;
+  // Enhanced get current user helper using sessionStorage
+  const getCurrentUser = () => {
+    try {
+      const storedUser = sessionStorage.getItem("currentUser");
+      if (!storedUser) return null;
 
-    const user = JSON.parse(storedUser);
-    if (!user.id || !user.role) {
-      console.warn("Invalid user data in sessionStorage");
+      const user = JSON.parse(storedUser);
+      if (!user.id || !user.role) {
+        console.warn("Invalid user data in sessionStorage");
+        sessionStorage.removeItem("currentUser");
+        return null;
+      }
+      return user;
+    } catch (error) {
+      console.error("Error getting current user:", error);
       sessionStorage.removeItem("currentUser");
       return null;
     }
-    return user;
-  } catch (error) {
-    console.error("Error getting current user:", error);
-    sessionStorage.removeItem("currentUser");
-    return null;
-  }
-};
+  };
+
+  // Function to log audit events
+  const logAuditEvent = async (userData, action, description = null) => {
+    try {
+      const auditData = {
+        user_id: userData.id,
+        role: userData.role,
+        action: action,
+        table_name: 'logins',
+        description: description,
+        username: userData.username,
+        record_id: userData.id
+      };
+
+      const { error } = await supabase
+        .from('audit_logs')
+        .insert([auditData]);
+
+      if (error) {
+        console.error('Error logging audit event:', error);
+      } else {
+        console.log('Audit event logged successfully:', action);
+      }
+    } catch (error) {
+      console.error('Error in logAuditEvent:', error);
+    }
+  };
+
+  // Function to log failed login attempts
+  const logFailedLogin = async (username, reason = "Invalid credentials") => {
+    try {
+      const auditData = {
+        user_id: null,
+        role: null,
+        action: 'Login',
+        table_name: 'users',
+        description: `Failed login attempt for username: ${username}. Reason: ${reason}`,
+        username: username,
+        record_id: null
+      };
+
+      const { error } = await supabase
+        .from('audit_logs')
+        .insert([auditData]);
+
+      if (error) {
+        console.error('Error logging failed login:', error);
+      }
+    } catch (error) {
+      console.error('Error in logFailedLogin:', error);
+    }
+  };
+
+  // Show success SweetAlert
+  const showSuccessAlert = (title, message, isPowerUser = false) => {
+    Swal.fire({
+      title: title,
+      text: message,
+      icon: 'success',
+      timer: isPowerUser ? 4000 : 2000,
+      timerProgressBar: true,
+      showConfirmButton: false,
+      background: isPowerUser ? '#f0e6ff' : '#f0f9ff',
+      color: '#1f2937',
+      iconColor: isPowerUser ? '#9333ea' : '#059669'
+    });
+  };
+
+  // Show error SweetAlert
+  const showErrorAlert = (title, message) => {
+    Swal.fire({
+      title: title,
+      text: message,
+      icon: 'error',
+      timer: 3000,
+      timerProgressBar: true,
+      showConfirmButton: false,
+      background: '#fef2f2',
+      color: '#dc2626',
+      iconColor: '#dc2626'
+    });
+  };
+
+  // Show loading SweetAlert
+  const showLoadingAlert = (title) => {
+    Swal.fire({
+      title: title,
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+  };
+
+  // Close any active SweetAlert
+  const closeAlert = () => {
+    Swal.close();
+  };
 
   // Check if user is already logged in on component mount
   useEffect(() => {
@@ -80,10 +179,22 @@ const getCurrentUser = () => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.altKey && e.key === 'f') {
         setSecretMode(true);
-        // Show a subtle indication that secret mode is active
+        // Show SweetAlert for secret mode activation
+        Swal.fire({
+          title: 'Power Mode Activated!',
+          text: 'Secret power user mode is now active for 5 seconds',
+          icon: 'info',
+          timer: 3000,
+          timerProgressBar: true,
+          showConfirmButton: false,
+          background: '#f0e6ff',
+          color: '#9333ea',
+          iconColor: '#9333ea'
+        });
+        // Secret mode stays active for 5 seconds
         setTimeout(() => {
           setSecretMode(false);
-        }, 5000); // Secret mode stays active for 5 seconds
+        }, 5000);
       }
     };
 
@@ -127,14 +238,24 @@ const getCurrentUser = () => {
       storeCurrentUser(powerUser);
       setIsPowerUserLoggedIn(true);
       
-      // Show special success message for power user
-      setShowSuccessPopup(true);
+      // Log power user login to audit logs
+      await logAuditEvent(powerUser, 'Login', 'Power user login via secret mode');
+      
+      // Show SweetAlert success for power user
+      showSuccessAlert(
+        '⚡ Power Access Granted!', 
+        'System Power User mode activated successfully!',
+        true
+      );
       
       return;
     }
 
     // Normal login flow
     try {
+      // Show loading alert
+      showLoadingAlert('Authenticating...');
+
       const { data, error } = await supabase
         .from("users")
         .select("*")
@@ -142,29 +263,49 @@ const getCurrentUser = () => {
         .eq("password", password)
         .single();
 
+      // Close loading alert
+      closeAlert();
+
       if (error || !data) {
         setIsLoading(false);
-        setShowErrorPopup(true);
-        setTimeout(() => setShowErrorPopup(false), 3000);
+        
+        // Log failed login attempt
+        await logFailedLogin(username, "Invalid username or password");
+        
+        // Show SweetAlert error
+        showErrorAlert('Login Failed', 'Wrong username or password!');
         return;
       }
 
       // Save the logged-in user using our enhanced helper
       const safeUser = storeCurrentUser(data);
 
-      // Show success popup before redirect
-      setShowSuccessPopup(true);
+      // Log successful login to audit logs
+      await logAuditEvent(data, 'Login', 'User logged in successfully');
+
+      // Show SweetAlert success
+      showSuccessAlert(
+        'Login Successful!', 
+        `Welcome back, ${data.full_name || data.username}! Redirecting...`
+      );
       
       // Redirect after showing success message
       setTimeout(() => {
         redirectUser(data.role);
-      }, 1500);
+      }, 2000);
 
     } catch (error) {
       console.error("Login error:", error);
       setIsLoading(false);
-      setShowErrorPopup(true);
-      setTimeout(() => setShowErrorPopup(false), 3000);
+      
+      // Close any open alerts
+      closeAlert();
+      
+      // Log failed login attempt due to error
+      await logFailedLogin(username, `System error: ${error.message}`);
+      
+      // Show SweetAlert error
+      showErrorAlert('Login Error', 'An error occurred during login. Please try again.');
     }
   };
 
@@ -190,6 +331,9 @@ const getCurrentUser = () => {
     try {
       setFormMessage("Creating admin account...");
       
+      // Show loading alert
+      showLoadingAlert('Creating Admin Account...');
+
       // Prepare admin data
       const adminData = {
         username: adminFormData.username,
@@ -209,9 +353,13 @@ const getCurrentUser = () => {
         .insert([adminData])
         .select();
 
+      // Close loading alert
+      closeAlert();
+
       if (error) {
         if (error.code === '23505') { // Unique violation
           setFormMessage("❌ Username already exists");
+          showErrorAlert('Creation Failed', 'Username already exists!');
         } else {
           throw error;
         }
@@ -220,6 +368,22 @@ const getCurrentUser = () => {
 
       if (data && data.length > 0) {
         setFormMessage(`✅ Success! Admin account "${adminFormData.username}" has been created.`);
+        
+        // Log admin account creation to audit logs
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          await logAuditEvent(
+            currentUser, 
+            'Add', 
+            `Created admin account: ${adminFormData.username}`
+          );
+        }
+        
+        // Show success SweetAlert
+        showSuccessAlert(
+          'Admin Created!', 
+          `Admin account "${adminFormData.username}" has been created successfully!`
+        );
         
         // Clear the form
         setAdminFormData({
@@ -241,6 +405,7 @@ const getCurrentUser = () => {
     } catch (error) {
       console.error('Error creating admin account:', error);
       setFormMessage("❌ Error creating admin account");
+      showErrorAlert('Creation Failed', 'Error creating admin account');
     }
   };
 
@@ -265,6 +430,9 @@ const getCurrentUser = () => {
     try {
       setFormMessage("Resetting admin password...");
       
+      // Show loading alert
+      showLoadingAlert('Resetting Password...');
+
       // Update the admin password in the database
       const { data, error } = await supabase
         .from("users")
@@ -275,10 +443,29 @@ const getCurrentUser = () => {
         .eq("role", "admin")
         .select();
 
+      // Close loading alert
+      closeAlert();
+
       if (error) throw error;
 
       if (data && data.length > 0) {
         setFormMessage(`✅ Success! Password for admin "${adminFormData.username}" has been reset.`);
+        
+        // Log password reset to audit logs
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          await logAuditEvent(
+            currentUser, 
+            'Edit', 
+            `Reset password for admin account: ${adminFormData.username}`
+          );
+        }
+        
+        // Show success SweetAlert
+        showSuccessAlert(
+          'Password Reset!', 
+          `Password for admin "${adminFormData.username}" has been reset successfully!`
+        );
         
         // Clear the form
         setAdminFormData({
@@ -298,10 +485,12 @@ const getCurrentUser = () => {
         }, 5000);
       } else {
         setFormMessage("❌ No admin user found with that username");
+        showErrorAlert('Reset Failed', 'No admin user found with that username!');
       }
     } catch (error) {
       console.error('Error resetting admin password:', error);
       setFormMessage("❌ Error resetting admin password");
+      showErrorAlert('Reset Failed', 'Error resetting admin password');
     }
   };
 
@@ -329,30 +518,55 @@ const getCurrentUser = () => {
     setIsPowerFormFocused(false);
   };
 
-  const logoutPowerUser = () => {
-    // Clear all states completely
-    localStorage.removeItem("currentUser");
-    setIsPowerUserLoggedIn(false);
-    setSecretMode(false);
-    setFormMessage("");
-    setActionType("create");
-    setShowSuccessPopup(false); // Clear the success notification
-    setShowErrorPopup(false); // Clear any error notifications
-    setUsername(""); // Clear username field
-    setPassword(""); // Clear password field
-    setIsLoading(false); // Reset loading state
-    
-    // Clear the admin form data
-    setAdminFormData({
-      username: "",
-      password: "",
-      confirmPassword: "",
-      full_name: "",
-      email: "",
-      contact_no: "",
-      address: "",
-      position: "Administrator"
+  const logoutPowerUser = async () => {
+    // Show confirmation dialog before logout
+    const result = await Swal.fire({
+      title: 'Exit Power Mode?',
+      text: 'Are you sure you want to exit System Power Access?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#9333ea',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, Exit',
+      cancelButtonText: 'Cancel',
+      background: '#f8fafc',
+      color: '#1f2937'
     });
+
+    if (result.isConfirmed) {
+      // Log power user logout to audit logs
+      const currentUser = getCurrentUser();
+      if (currentUser && currentUser.isPowerUser) {
+        await logAuditEvent(currentUser, 'Logout', 'Power user logged out');
+      }
+      
+      // Show logout success message
+      showSuccessAlert('Logged Out', 'Successfully exited Power Mode!');
+      
+      // Clear all states completely
+      sessionStorage.removeItem("currentUser");
+      setIsPowerUserLoggedIn(false);
+      setSecretMode(false);
+      setFormMessage("");
+      setActionType("create");
+      setShowSuccessPopup(false);
+      setShowErrorPopup(false);
+      setUsername("");
+      setPassword("");
+      setIsLoading(false);
+      
+      // Clear the admin form data
+      setAdminFormData({
+        username: "",
+        password: "",
+        confirmPassword: "",
+        full_name: "",
+        email: "",
+        contact_no: "",
+        address: "",
+        position: "Administrator"
+      });
+    }
   };
 
   const clearForm = () => {
@@ -637,32 +851,6 @@ const getCurrentUser = () => {
         onFocus={handleFormFocus}
         onBlur={handleFormBlur}
       >
-        {/* Success Popup - Positioned above login form */}
-        {showSuccessPopup && (
-          <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in min-w-max">
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>
-                {secretMode ? "Power User Access Granted!" : "Successfully logged in! Redirecting..."}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Error Popup - Positioned above login form */}
-        {showErrorPopup && (
-          <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in min-w-max">
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              <span>Wrong username or password!</span>
-            </div>
-          </div>
-        )}
-
         <div className={`bg-white p-8 rounded-lg shadow-2xl w-96 transform transition-all duration-300 hover:scale-105 hover:shadow-xl border ${
           secretMode ? "border-purple-500 ring-2 ring-purple-300" : "border-gray-100"
         }`}>

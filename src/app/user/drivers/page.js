@@ -215,7 +215,7 @@ const DriverPage = () => {
       const { error } = await supabase.from('drivers').insert([payload]);
 
       if (error) {
-        console.error('Error adding driver:', error);
+        console.error('Error adding driver:', error.message);
         alert('Failed to add driver.');
         return;
       }
@@ -497,11 +497,11 @@ const DriverPage = () => {
               }}
               value={formData.name}
               placeholder="Enter full name"
-              maxLength={30}
+              maxLength={50}
               required
               className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
-            <p className="text-xs text-gray-500 mt-1">{formData.name.length}/30 characters</p>
+            <p className="text-xs text-gray-500 mt-1">{formData.name.length}/50 characters</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Birthdate</label>
@@ -542,10 +542,10 @@ const DriverPage = () => {
               onChange={handleChange}
               value={formData.address}
               placeholder="Full address"
-              maxLength={75}
+              maxLength={100}
               className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
-            <p className="text-xs text-gray-500 mt-1">{formData.address.length}/75 characters</p>
+            <p className="text-xs text-gray-500 mt-1">{formData.address.length}/100 characters</p>
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
@@ -647,10 +647,10 @@ const DriverPage = () => {
               name="address"
               value={editFormData.address}
               onChange={handleEditChange}
-              maxLength={75}
+              maxLength={100}
               className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">{editFormData.address?.length || 0}/75 characters</p>
+            <p className="text-xs text-gray-500 mt-1">{editFormData.address?.length || 0}/100 characters</p>
           </div>
           <div className="flex justify-end space-x-3 pt-4">
             <button

@@ -11,6 +11,7 @@ const UserRequestPage = () => {
   const [inventory, setInventory] = useState([]);
   const [categoryList, setCategoryList] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const [request, setRequest] = useState({
     plate_number: '',
@@ -25,15 +26,19 @@ const UserRequestPage = () => {
     { category: '', item_name: '', item_id: '', quantity: 1 }
   ]);
 
+  // State for vehicle dropdown search
+  const [vehicleSearch, setVehicleSearch] = useState('');
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+
   // Load current user
- useEffect(() => {
-         const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
-         if (!currentUser) {
-           router.push("/");
-           return;
-         }
-         setCurrentUser(currentUser);
-       }, [router]);
+  useEffect(() => {
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!currentUser) {
+      router.push("/");
+      return;
+    }
+    setCurrentUser(currentUser);
+  }, [router]);
 
   // Fetch trucks & inventory - Filter out archived trucks
   useEffect(() => {
@@ -42,7 +47,7 @@ const UserRequestPage = () => {
       const { data: truckData } = await supabase
         .from('trucks')
         .select('plate_number')
-        .eq('is_archived', false) // Assuming you have an is_archived column
+        .eq('is_archived', false)
         .order('plate_number');
       
       if (truckData) setTrucks(truckData);
@@ -59,6 +64,11 @@ const UserRequestPage = () => {
     };
     fetchData();
   }, []);
+
+  // Filter trucks based on search input
+  const filteredTrucks = trucks.filter(truck =>
+    truck.plate_number.toLowerCase().includes(vehicleSearch.toLowerCase())
+  );
 
   const handleItemChange = (index, e) => {
     const { name, value } = e.target;
@@ -95,6 +105,53 @@ const UserRequestPage = () => {
       setItems(newItems);
     }
   };
+
+  // Function to notify admins (shared notification, tracked by read_by)
+const notifyAdmin = async (requestData, itemsData) => {
+  try {
+    // Get admin users
+    const { data: adminUsers, error: adminError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'admin');
+
+    if (adminError) {
+      console.error('Error fetching admin users:', adminError);
+      return;
+    }
+
+    if (!adminUsers || adminUsers.length === 0) {
+      console.log('No admins found');
+      return;
+    }
+
+    // Create notification message
+    const itemNames = itemsData.map(item => item.item_name).join(', ');
+    const message = `New maintenance request for ${requestData.plate_number}: ${itemNames}`;
+
+    // Insert only one shared notification for admins
+    const { error: notifError } = await supabase
+      .from('notifications')
+      .insert([
+        {
+          message,
+          type: 'maintenance_request',
+          role: 'admin',
+          plate_number: requestData.plate_number,
+          read_by: '[]', // start empty, admins will append their IDs when they read
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+    if (notifError) {
+      console.error('Error creating admin notification:', notifError.message);
+    } else {
+      console.log('Admin notification created successfully');
+    }
+  } catch (error) {
+    console.error('Error in notifyAdmin:', error);
+  }
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -151,11 +208,17 @@ const UserRequestPage = () => {
         return;
       }
 
-      alert('Request submitted successfully!');
+      // Notify admin about the new request
+      await notifyAdmin(request, items);
+
+      // Show success modal instead of alert
+      setShowSuccessModal(true);
+      
       // Reset form
       setRequest({ plate_number: '', estimated_cost: '', reason: '', photo_url: '' });
       setItems([{ category: '', item_name: '', item_id: '', quantity: 1 }]);
       setPhotoFile(null);
+      setVehicleSearch('');
       
     } catch (error) {
       console.error('Submission error:', error);
@@ -165,31 +228,138 @@ const UserRequestPage = () => {
     }
   };
 
+  // Handle vehicle selection
+  const handleVehicleSelect = (plateNumber) => {
+    setRequest({ ...request, plate_number: plateNumber });
+    setVehicleSearch(plateNumber);
+    setShowVehicleDropdown(false);
+  };
+
+  // Handle vehicle search input change
+  const handleVehicleSearchChange = (e) => {
+    const value = e.target.value;
+    setVehicleSearch(value);
+    setShowVehicleDropdown(true);
+    
+    // If the input matches a truck exactly, select it
+    const exactMatch = trucks.find(truck => 
+      truck.plate_number.toLowerCase() === value.toLowerCase()
+    );
+    if (exactMatch) {
+      setRequest({ ...request, plate_number: exactMatch.plate_number });
+    } else {
+      setRequest({ ...request, plate_number: value });
+    }
+  };
+
+  // Handle estimated cost change with 6-digit minimum validation
+  const handleEstimatedCostChange = (e) => {
+    const value = e.target.value;
+    // Ensure minimum of 6 digits (including decimals)
+    if (value === '' || parseFloat(value) >= 0.01) {
+      setRequest({ ...request, estimated_cost: value });
+    }
+  };
+
+  // Handle reason change with 200 character limit
+  const handleReasonChange = (e) => {
+    const value = e.target.value;
+    if (value.length <= 200) {
+      setRequest({ ...request, reason: value });
+    }
+  };
+
+  const SuccessModal = () => (
+    <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all">
+        <div className="p-6 text-center">
+          {/* Success Icon */}
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Request Submitted Successfully!</h3>
+          <p className="text-gray-600 mb-6">
+            Your maintenance request has been submitted and the admin team has been notified.
+          </p>
+          
+          <button
+            onClick={() => setShowSuccessModal(false)}
+            className="w-full px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <main className="flex-1 p-6 bg-gray-50 min-h-screen">
+    <main className="flex-1 p-6 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Maintenance Request</h1>
-          <p className="text-gray-600">Submit maintenance requests for fleet vehicles</p>
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+            Create Maintenance Request
+          </h1>
+          <p className="text-gray-600 text-lg">Submit maintenance requests for fleet vehicles</p>
         </div>
 
         {/* Request Form */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-8 py-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Request Details</h2>
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <h2 className="text-2xl font-semibold text-gray-800 flex items-center gap-3">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Request Details
+            </h2>
           </div>
           
           <form onSubmit={handleSubmit} className="p-8 space-y-8">
             {/* Truck Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="relative">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Vehicle <span className="text-red-500">*</span>
               </label>
+              <input
+                type="text"
+                value={vehicleSearch}
+                onChange={handleVehicleSearchChange}
+                onFocus={() => setShowVehicleDropdown(true)}
+                onBlur={() => setTimeout(() => setShowVehicleDropdown(false), 200)}
+                placeholder="Type or select a vehicle"
+                className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
+                required
+              />
+              
+              {/* Custom Dropdown */}
+              {showVehicleDropdown && filteredTrucks.length > 0 && (
+                <div className="absolute z-10 w-full mt-2 bg-white border-2 border-blue-200 rounded-xl shadow-2xl max-h-60 overflow-auto">
+                  {filteredTrucks.map((truck) => (
+                    <div
+                      key={truck.plate_number}
+                      onClick={() => handleVehicleSelect(truck.plate_number)}
+                      className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors duration-150"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        <span className="font-medium text-gray-700">{truck.plate_number}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Original hidden select for form validation */}
               <select
                 value={request.plate_number}
                 onChange={(e) => setRequest({ ...request, plate_number: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                className="hidden"
                 required
               >
                 <option value="">Select a vehicle</option>
@@ -204,11 +374,16 @@ const UserRequestPage = () => {
             {/* Items Section */}
             <div className="border-t border-gray-200 pt-8">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-semibold text-gray-800">Requested Items</h3>
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  Requested Items
+                </h3>
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+                  className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-xl hover:from-blue-700 hover:to-blue-800 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -219,14 +394,14 @@ const UserRequestPage = () => {
 
               <div className="space-y-4">
                 {items.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-4 items-start p-4 bg-gray-50 rounded-lg">
+                  <div key={idx} className="grid grid-cols-12 gap-4 items-start p-6 bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl border border-gray-200">
                     <div className="col-span-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Category</label>
                       <select
                         name="category"
                         value={item.category}
                         onChange={(e) => handleItemChange(idx, e)}
-                        className="w-full px-3 py-2 border border-gray-300 text-gray-500 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-4 py-3 border-2 border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         required
                       >
                         <option value="">Select category</option>
@@ -237,12 +412,12 @@ const UserRequestPage = () => {
                     </div>
 
                     <div className="col-span-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Item</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Item</label>
                       <select
                         name="item_name"
                         value={item.item_name}
                         onChange={(e) => handleItemChange(idx, e)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-200 hover:border-gray-300"
                         required
                         disabled={!item.category}
                       >
@@ -254,24 +429,24 @@ const UserRequestPage = () => {
                     </div>
 
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Quantity</label>
                       <input
                         type="number"
                         name="quantity"
                         value={item.quantity}
                         min="1"
                         onChange={(e) => handleItemChange(idx, e)}
-                        className="w-full px-3 py-2 border border-gray-300 text-gray-500 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-4 py-3 border-2 border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                         required
                       />
                     </div>
 
-                    <div className="col-span-2 flex items-end h-10">
+                    <div className="col-span-2 flex items-end h-14">
                       {items.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
-                          className="w-full px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors duration-200"
+                          className="w-full px-4 py-3 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all duration-200 border-2 border-transparent hover:border-red-200 font-medium"
                         >
                           Remove
                         </button>
@@ -284,56 +459,65 @@ const UserRequestPage = () => {
 
             {/* Estimated Cost */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Estimated Cost (₱)
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                Estimated Cost (₱) <span className="text-red-500">*</span>
+                <span className="text-xs text-gray-500 ml-2">Minimum: ₱0.01</span>
               </label>
               <input
                 type="number"
                 step="0.01"
-                min="0"
+                min="0.01"
                 value={request.estimated_cost}
-                onChange={(e) => setRequest({ ...request, estimated_cost: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                onChange={handleEstimatedCostChange}
+                className="w-full px-4 py-3.5 border-2 border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                 placeholder="0.00"
+                required
               />
             </div>
 
             {/* Photo Upload */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
                 Attachment (Optional)
               </label>
               <div className="flex items-center space-x-4">
                 <input
                   type="file"
                   onChange={(e) => setPhotoFile(e.target.files[0])}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-blue-50 file:to-blue-100 file:text-blue-700 hover:file:from-blue-100 hover:file:to-blue-200 transition-all duration-200"
                   accept="image/*,.pdf,.doc,.docx"
                 />
               </div>
-              <p className="mt-1 text-sm text-gray-500">Supports images, PDF, and documents</p>
+              <p className="mt-2 text-sm text-gray-500">Supports images, PDF, and documents (Max: 10MB)</p>
             </div>
 
             {/* Reason */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Reason or Notes
-              </label>
+              <div className="flex justify-between items-center mb-3">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Reason or Notes <span className="text-red-500">*</span>
+                </label>
+                <span className={`text-sm ${request.reason.length > 180 ? 'text-red-500' : 'text-gray-500'}`}>
+                  {request.reason.length}/200
+                </span>
+              </div>
               <textarea
                 rows="4"
                 value={request.reason}
-                onChange={(e) => setRequest({ ...request, reason: e.target.value })}
-                className="w-full px-4 py-3 border text-gray-500 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                onChange={handleReasonChange}
+                className="w-full px-4 py-3.5 border-2 border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300 resize-none"
                 placeholder="Please provide details about the maintenance needed..."
+                maxLength={200}
+                required
               ></textarea>
             </div>
 
             {/* Submit Button */}
-            <div className="flex justify-end pt-6 border-t border-gray-200">
+            <div className="flex justify-end pt-8 border-t border-gray-200">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-8 py-3 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                className="px-10 py-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold rounded-xl hover:from-amber-600 hover:to-amber-700 focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 {isSubmitting ? (
                   <span className="flex items-center">
@@ -344,13 +528,21 @@ const UserRequestPage = () => {
                     Submitting...
                   </span>
                 ) : (
-                  'Submit Request'
+                  <span className="flex items-center">
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Submit Request
+                  </span>
                 )}
               </button>
             </div>
           </form>
         </div>
       </div>
+
+      {/* Success Modal */}
+      {showSuccessModal && <SuccessModal />}
     </main>
   );
 };

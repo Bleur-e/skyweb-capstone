@@ -13,14 +13,88 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
     address: userData.address || '',
     contact_no: userData.contact_no || '',
     position: userData.position || '',
-    profile_image: userData.profile_image || '', // ✅ Fixed: using profile_image instead of photo_url
+    profile_image: userData.profile_image || '',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [errors, setErrors] = useState({});
 
-  // ✅ Handle text input changes
+  // ✅ Validation functions
+  const validateField = (name, value) => {
+    const newErrors = { ...errors };
+
+    switch (name) {
+      case 'full_name':
+        if (value && !/^[A-Za-z\s]*$/.test(value)) {
+          newErrors.full_name = 'Name can only contain letters and spaces';
+        } else if (value.length > 50) {
+          newErrors.full_name = 'Name must be 50 characters or less';
+        } else {
+          delete newErrors.full_name;
+        }
+        break;
+
+      case 'address':
+        if (value.length > 100) {
+          newErrors.address = 'Address must be 100 characters or less';
+        } else {
+          delete newErrors.address;
+        }
+        break;
+
+      case 'contact_no':
+        if (value && !/^\d*$/.test(value)) {
+          newErrors.contact_no = 'Contact number can only contain digits';
+        } else if (value.length > 11) {
+          newErrors.contact_no = 'Contact number must be 11 digits or less';
+        } else {
+          delete newErrors.contact_no;
+        }
+        break;
+
+      case 'position':
+        if (value && !/^[A-Za-z\s]*$/.test(value)) {
+          newErrors.position = 'Position can only contain letters and spaces';
+        } else if (value.length > 30) {
+          newErrors.position = 'Position must be 30 characters or less';
+        } else {
+          delete newErrors.position;
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // ✅ Handle text input changes with validation
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    
+    // Apply input restrictions based on field type
+    let filteredValue = value;
+    
+    switch (name) {
+      case 'full_name':
+      case 'position':
+        // Only allow letters and spaces
+        filteredValue = value.replace(/[^A-Za-z\s]/g, '');
+        break;
+      
+      case 'contact_no':
+        // Only allow numbers
+        filteredValue = value.replace(/\D/g, '');
+        break;
+      
+      default:
+        break;
+    }
+
+    setForm(prev => ({ ...prev, [name]: filteredValue }));
+    validateField(name, filteredValue);
   };
 
   // ✅ Handle file upload with progress
@@ -60,7 +134,7 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
         .from('user-photos')
         .getPublicUrl(fileName);
 
-      setForm({ ...form, profile_image: publicUrlData.publicUrl }); // ✅ Fixed: using profile_image
+      setForm({ ...form, profile_image: publicUrlData.publicUrl });
       setUploadProgress(100);
       
     } catch (error) {
@@ -72,9 +146,52 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
     }
   };
 
+  // ✅ Validate entire form before submission
+  const validateForm = () => {
+    const newErrors = {};
+
+    // Full Name validation
+    if (form.full_name && !/^[A-Za-z\s]*$/.test(form.full_name)) {
+      newErrors.full_name = 'Name can only contain letters and spaces';
+    }
+    if (form.full_name.length > 50) {
+      newErrors.full_name = 'Name must be 50 characters or less';
+    }
+
+    // Address validation
+    if (form.address.length > 100) {
+      newErrors.address = 'Address must be 100 characters or less';
+    }
+
+    // Contact Number validation
+    if (form.contact_no && !/^\d*$/.test(form.contact_no)) {
+      newErrors.contact_no = 'Contact number can only contain digits';
+    }
+    if (form.contact_no.length > 11) {
+      newErrors.contact_no = 'Contact number must be 11 digits or less';
+    }
+
+    // Position validation
+    if (form.position && !/^[A-Za-z\s]*$/.test(form.position)) {
+      newErrors.position = 'Position can only contain letters and spaces';
+    }
+    if (form.position.length > 30) {
+      newErrors.position = 'Position must be 30 characters or less';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   // ✅ Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      alert('Please fix the validation errors before submitting.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -85,7 +202,7 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
           address: form.address,
           contact_no: form.contact_no,
           position: form.position,
-          photo_url: form.profile_image, // ✅ Fixed: mapping to photo_url for the request table
+          photo_url: form.profile_image,
           status: 'Pending',
         },
       ]);
@@ -102,6 +219,17 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Check if form has any changes
+  const hasChanges = () => {
+    return (
+      form.full_name !== userData.full_name ||
+      form.address !== userData.address ||
+      form.contact_no !== userData.contact_no ||
+      form.position !== userData.position ||
+      form.profile_image !== userData.profile_image
+    );
   };
 
   return (
@@ -172,6 +300,8 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
               value={form.full_name}
               onChange={handleChange}
               placeholder="Enter your full name"
+              error={errors.full_name}
+              maxLength={50}
             />
             <InputField
               label="Address"
@@ -179,6 +309,8 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
               value={form.address}
               onChange={handleChange}
               placeholder="Enter your address"
+              error={errors.address}
+              maxLength={100}
             />
             <InputField
               label="Contact Number"
@@ -186,14 +318,26 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
               value={form.contact_no}
               onChange={handleChange}
               placeholder="Enter your contact number"
+              error={errors.contact_no}
+              maxLength={11}
             />
             <InputField
               label="Position"
               name="position"
               value={form.position}
               onChange={handleChange}
-              placeholder="Enter your position"
+              placeholder="Enter your position "
+              error={errors.position}
+              maxLength={30}
             />
+          </div>
+
+          {/* Character Count Indicators */}
+          <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
+            <div>Full Name: {form.full_name.length}/50</div>
+            <div>Address: {form.address.length}/100</div>
+            <div>Contact: {form.contact_no.length}/11</div>
+            <div>Position: {form.position.length}/30</div>
           </div>
 
           {/* Action Buttons */}
@@ -208,8 +352,8 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
             </button>
             <button
               type="submit"
-              disabled={isLoading}
-              className="px-6 py-2 bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-lg hover:from-blue-800 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 font-medium shadow-md hover:shadow-lg"
+              disabled={isLoading || !hasChanges() || Object.keys(errors).length > 0}
+              className="px-6 py-2 bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-lg hover:from-blue-800 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md hover:shadow-lg"
             >
               {isLoading ? (
                 <span className="flex items-center space-x-2">
@@ -227,7 +371,7 @@ export default function EditProfileModal({ userData, onClose, onUpdated }) {
   );
 }
 
-function InputField({ label, name, value, onChange, placeholder }) {
+function InputField({ label, name, value, onChange, placeholder, error, maxLength }) {
   return (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -239,8 +383,17 @@ function InputField({ label, name, value, onChange, placeholder }) {
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full border border-gray-300 rounded-lg p-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+        maxLength={maxLength}
+        className={`w-full border rounded-lg p-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 ${
+          error ? 'border-red-500 bg-red-50' : 'border-gray-300'
+        }`}
       />
+      {error && (
+        <p className="text-red-500 text-xs mt-1 flex items-center">
+          <span className="mr-1">⚠</span>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

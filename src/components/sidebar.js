@@ -228,7 +228,8 @@ export default function Sidebar({ role }) {
               </li>
             )}
 
-            {/* Requests */}
+            {/* User Requests */}
+            {!isAdmin && (
             <li>
               <Link 
                 href={`/${role}/userRequest`} 
@@ -239,6 +240,22 @@ export default function Sidebar({ role }) {
                 <span className="group-hover:translate-x-1 transition-transform">Request Page</span>
               </Link>
             </li>
+          )}
+
+          {/* Admin Requests Approval */}
+            {!isUser && (
+            <li>
+              <Link 
+                href={`/${role}/userRequest`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-amber-600/20 hover:border-l-4 hover:border-amber-400 transition-all duration-200 group"
+                onClick={handleLinkClick}
+              >
+                <ClipboardCheck className="w-5 h-5 text-amber-300 group-hover:text-amber-100" /> 
+                <span className="group-hover:translate-x-1 transition-transform">Admin Approval</span>
+              </Link>
+            </li>
+          )}
+
 
             {/* Archives (Hidden for user) */}
             {!isUser && (

@@ -19,10 +19,12 @@ const InventoryPage = () => {
   const [addItemName, setAddItemName] = useState('');
   const [addQuantity, setAddQuantity] = useState(0);
 
-  // For Edit Stock Modal
+  // For Edit Stock Modal - UPDATED
   const [editCategory, setEditCategory] = useState('');
   const [editItemId, setEditItemId] = useState('');
   const [editQuantity, setEditQuantity] = useState(0);
+  const [editAction, setEditAction] = useState('reduce'); // 'reduce' or 'add'
+  const [selectedItemCurrentQty, setSelectedItemCurrentQty] = useState(0);
 
   // For Archive Item Modal
   const [archiveItemId, setArchiveItemId] = useState('');
@@ -31,13 +33,13 @@ const InventoryPage = () => {
 
   // Load current user
   useEffect(() => {
-          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
-          if (!currentUser) {
-            router.push("/");
-            return;
-          }
-          setCurrentUser(currentUser);
-        }, [router]);
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!currentUser) {
+      router.push("/");
+      return;
+    }
+    setCurrentUser(currentUser);
+  }, [router]);
 
   useEffect(() => {
     fetchInventory();
@@ -73,6 +75,46 @@ const InventoryPage = () => {
       },
     ]);
     if (error) console.error('Error logging action:', error);
+  };
+
+  // NEW: Send notification function
+  const sendNotification = async (message, type, userId = null, role = null) => {
+    const { error } = await supabase.from('notifications').insert([
+      {
+        message,
+        type,
+        user_id: userId,
+        role: role,
+        created_at: new Date().toISOString(),
+        read_by: []
+      },
+    ]);
+    
+    if (error) {
+      console.error('Error sending notification:', error);
+    }
+  };
+
+  // NEW: Check and send stock alerts
+  const checkStockAlerts = async (itemName, category, newQuantity, previousQuantity) => {
+    // Send alert for out of stock
+    if (previousQuantity > 0 && newQuantity === 0) {
+      const message = `Item ${itemName} (${category}) is now out of stock!`;
+      await sendNotification(message, 'out_of_stock', null, 'admin');
+      await sendNotification(message, 'out_of_stock', currentUser?.id, null);
+    }
+    // Send alert for low stock (below 5)
+    else if (previousQuantity >= 5 && newQuantity < 5 && newQuantity > 0) {
+      const message = `Item ${itemName} (${category}) is running low on stock! Current quantity: ${newQuantity}`;
+      await sendNotification(message, 'low_stock', null, 'admin');
+      await sendNotification(message, 'low_stock', currentUser?.id, null);
+    }
+    // Send alert for stock restored
+    else if (previousQuantity === 0 && newQuantity > 0) {
+      const message = `Item ${itemName} (${category}) is back in stock! Current quantity: ${newQuantity}`;
+      await sendNotification(message, 'stock_restored', null, 'admin');
+      await sendNotification(message, 'stock_restored', currentUser?.id, null);
+    }
   };
 
   // Group items by item_name + category for display
@@ -132,9 +174,18 @@ const InventoryPage = () => {
     }
 
     if (existingItemById) {
+      const previousQuantity = existingItemById.quantity;
+      const newQuantity = existingItemById.quantity + Number(addQuantity);
+      
+      // Check stock limit
+      if (newQuantity > 100) {
+        alert(`Stock cannot exceed 100 units. Current: ${previousQuantity}, Trying to add: ${addQuantity}`);
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from('inventory')
-        .update({ quantity: existingItemById.quantity + Number(addQuantity) })
+        .update({ quantity: newQuantity })
         .eq('item_id', existingItemById.item_id);
 
       if (updateError) {
@@ -143,13 +194,22 @@ const InventoryPage = () => {
         return;
       }
 
+      // Check for stock alerts
+      await checkStockAlerts(existingItemById.item_name, existingItemById.category, newQuantity, previousQuantity);
+
       await logAction(
         currentUser,
         'Edit',
         'inventory',
-        `Increased stock of ${existingItemById.item_name} (${existingItemById.category}) by ${addQuantity}. New qty: ${existingItemById.quantity + Number(addQuantity)}`
+        `Increased stock of ${existingItemById.item_name} (${existingItemById.category}) by ${addQuantity}. New qty: ${newQuantity}`
       );
     } else {
+      // Check stock limit for new item
+      if (Number(addQuantity) > 100) {
+        alert(`Stock cannot exceed 100 units. Trying to add: ${addQuantity}`);
+        return;
+      }
+
       const newItemId = `${addCategory.substring(0, 3).toUpperCase()}-${Math.floor(
         Math.random() * 10000
       )
@@ -187,7 +247,7 @@ const InventoryPage = () => {
     fetchInventory();
   };
 
-  // Edit Stock Modal Logic
+  // UPDATED: Edit Stock Modal Logic
   const handleEditSubmit = async (e) => {
     e.preventDefault();
 
@@ -196,9 +256,9 @@ const InventoryPage = () => {
       return;
     }
 
-    const reduceQty = Number(editQuantity);
-    if (reduceQty <= 0) {
-      alert('Please enter a valid quantity to reduce.');
+    const quantityChange = Number(editQuantity);
+    if (quantityChange <= 0) {
+      alert('Please enter a valid quantity.');
       return;
     }
 
@@ -214,12 +274,24 @@ const InventoryPage = () => {
       return;
     }
 
-    if (existingItem.quantity < reduceQty) {
-      alert(`Not enough stock. Current quantity: ${existingItem.quantity}`);
-      return;
-    }
+    const previousQuantity = existingItem.quantity;
+    let newQty;
 
-    const newQty = existingItem.quantity - reduceQty;
+    if (editAction === 'reduce') {
+      if (existingItem.quantity < quantityChange) {
+        alert(`Not enough stock to reduce. Current quantity: ${existingItem.quantity}`);
+        return;
+      }
+      newQty = existingItem.quantity - quantityChange;
+    } else { // add action
+      newQty = existingItem.quantity + quantityChange;
+      
+      // Check stock limit
+      if (newQty > 100) {
+        alert(`Stock cannot exceed 100 units. Current: ${existingItem.quantity}, Trying to add: ${quantityChange}`);
+        return;
+      }
+    }
 
     const { error: updateError } = await supabase
       .from('inventory')
@@ -232,18 +304,33 @@ const InventoryPage = () => {
       return;
     }
 
+    // Check for stock alerts
+    await checkStockAlerts(existingItem.item_name, existingItem.category, newQty, previousQuantity);
+
+    const actionText = editAction === 'reduce' ? 'Reduced' : 'Increased';
     await logAction(
       currentUser,
       'Edit',
       'inventory',
-      `Reduced stock of ${existingItem.item_name} (${existingItem.category}) from ${existingItem.quantity} to ${newQty}.`
+      `${actionText} stock of ${existingItem.item_name} (${existingItem.category}) from ${previousQuantity} to ${newQty}.`
     );
 
     setShowEditModal(false);
     setEditCategory('');
     setEditItemId('');
     setEditQuantity(0);
+    setEditAction('reduce');
+    setSelectedItemCurrentQty(0);
     fetchInventory();
+  };
+
+  // NEW: Handle item selection in edit modal
+  const handleEditItemSelect = (itemId) => {
+    setEditItemId(itemId);
+    const selectedItem = items.find(item => item.item_id === itemId);
+    if (selectedItem) {
+      setSelectedItemCurrentQty(selectedItem.quantity);
+    }
   };
 
   // Archive Item Logic
@@ -485,11 +572,13 @@ const InventoryPage = () => {
                 <input
                   type="number"
                   min="1"
+                  max="100"
                   value={addQuantity}
                   onChange={(e) => setAddQuantity(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Maximum stock limit: 100 units</p>
               </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button
@@ -511,7 +600,7 @@ const InventoryPage = () => {
         </div>
       )}
 
-      {/* Edit Stock Modal */}
+      {/* UPDATED: Edit Stock Modal */}
       {showEditModal && (
         <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
@@ -526,6 +615,7 @@ const InventoryPage = () => {
                   onChange={(e) => {
                     setEditCategory(e.target.value);
                     setEditItemId('');
+                    setSelectedItemCurrentQty(0);
                   }}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
@@ -542,7 +632,7 @@ const InventoryPage = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Item to Edit</label>
                 <select
                   value={editItemId}
-                  onChange={(e) => setEditItemId(e.target.value)}
+                  onChange={(e) => handleEditItemSelect(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
                   disabled={!editCategory}
@@ -557,23 +647,85 @@ const InventoryPage = () => {
                     ))}
                 </select>
               </div>
+
+              {editItemId && (
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-700">
+                    Current Stock: <span className="font-semibold">{selectedItemCurrentQty}</span> units
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Maximum allowed stock: 100 units
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Action</label>
+                <div className="flex space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="reduce"
+                      checked={editAction === 'reduce'}
+                      onChange={(e) => setEditAction(e.target.value)}
+                      className="mr-2 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Reduce Stock</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="add"
+                      checked={editAction === 'add'}
+                      onChange={(e) => setEditAction(e.target.value)}
+                      className="mr-2 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Add Stock</span>
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Quantity to Reduce
+                  Quantity to {editAction === 'reduce' ? 'Reduce' : 'Add'}
                 </label>
                 <input
                   type="number"
                   min="1"
+                  max={editAction === 'add' ? (100 - selectedItemCurrentQty) : selectedItemCurrentQty}
                   value={editQuantity}
                   onChange={(e) => setEditQuantity(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  {editAction === 'add' 
+                    ? `Can add up to ${100 - selectedItemCurrentQty} units (max: 100)` 
+                    : `Can reduce up to ${selectedItemCurrentQty} units`}
+                </p>
               </div>
+
+              {editItemId && editQuantity > 0 && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm text-blue-700 font-medium">
+                    New stock will be: {editAction === 'reduce' 
+                      ? selectedItemCurrentQty - Number(editQuantity) 
+                      : selectedItemCurrentQty + Number(editQuantity)} units
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowEditModal(false)}
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditCategory('');
+                    setEditItemId('');
+                    setEditQuantity(0);
+                    setEditAction('reduce');
+                    setSelectedItemCurrentQty(0);
+                  }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
                 >
                   Cancel

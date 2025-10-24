@@ -14,13 +14,14 @@ export default function NotificationDropdown({ currentUser }) {
 
   const toggleDropdown = () => setIsOpen((prev) => !prev);
 
-  // Fetch notifications
+  // ✅ Fetch notifications filtered by role or user
   const fetchNotifications = async () => {
     if (!currentUser) return;
 
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
+      .or(`role.eq.${currentUser.role},user_id.eq.${currentUser.id}`)
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -31,16 +32,23 @@ export default function NotificationDropdown({ currentUser }) {
     setNotifications(data);
   };
 
-  // Check if notification is read by current user
+  // ✅ Check if notification is read by current user
   const isReadByUser = (notif) => {
-    return notif.read_by?.includes(currentUser.id);
+    if (!notif.read_by) return false;
+    const readByArray = Array.isArray(notif.read_by)
+      ? notif.read_by
+      : notif.read_by?.array || [];
+    return readByArray.includes(currentUser.id);
   };
 
-  // Mark notification as read for current user
+  // ✅ Mark notification as read for current user only
   const markAsRead = async (notif) => {
     if (isReadByUser(notif)) return; // already read
 
-    const updatedReadBy = [...(notif.read_by || []), currentUser.id];
+    const currentReadBy = Array.isArray(notif.read_by)
+      ? notif.read_by
+      : notif.read_by?.array || [];
+    const updatedReadBy = [...currentReadBy, currentUser.id];
 
     const { error } = await supabase
       .from('notifications')
@@ -59,7 +67,7 @@ export default function NotificationDropdown({ currentUser }) {
     );
   };
 
-  // Show center popup
+  // ✅ Center popup for new notifications
   const showCenterPopup = (message) => {
     setPopupMessage(message);
     setShowPopup(true);
@@ -73,7 +81,7 @@ export default function NotificationDropdown({ currentUser }) {
     await markAsRead(notif);
   };
 
-  // Format time
+  // ✅ Format time
   const formatTime = (timestamp) => {
     const now = new Date();
     const diffMs = now - new Date(timestamp);
@@ -85,6 +93,7 @@ export default function NotificationDropdown({ currentUser }) {
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
+  // ✅ Realtime notifications (filtered by role or user)
   useEffect(() => {
     fetchNotifications();
 
@@ -92,11 +101,20 @@ export default function NotificationDropdown({ currentUser }) {
 
     const channel = supabase
       .channel('realtime-notifs')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+      }, (payload) => {
         const n = payload.new;
+        // Only add notification if it matches role or user_id
         if (n.role === currentUser.role || n.user_id === currentUser.id) {
-          setNotifications((prev) => [n, ...prev].slice(0, 10));
-          showCenterPopup('🕊️ New notification: ' + n.message);
+          setNotifications((prev) => {
+            const exists = prev.some((p) => p.id === n.id);
+            if (exists) return prev; // prevent duplicate
+            return [n, ...prev].slice(0, 10);
+          });
+          showCenterPopup('New notification: ' + n.message);
         }
       })
       .subscribe();
@@ -107,11 +125,11 @@ export default function NotificationDropdown({ currentUser }) {
     };
   }, [currentUser]);
 
-  // Count unread
+  // ✅ Count unread notifications
   const getUnreadCount = () =>
     notifications.filter((n) => !isReadByUser(n)).length;
 
-  // Handle outside click
+  // ✅ Handle click outside dropdown
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -166,7 +184,9 @@ export default function NotificationDropdown({ currentUser }) {
                     )}
                     <div>
                       <p className="text-sm text-gray-900">{notif.message}</p>
-                      <p className="text-xs text-gray-500">{formatTime(notif.created_at)}</p>
+                      <p className="text-xs text-gray-500">
+                        {formatTime(notif.created_at)}
+                      </p>
                     </div>
                   </div>
                 </div>
