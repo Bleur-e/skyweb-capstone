@@ -73,7 +73,7 @@ export default function AccountManagement() {
   const validateContactNo = (contact) => {
     if (!contact) return '';
     if (!contact.startsWith('09')) {
-      return 'Contact number must start with "09"';
+      return 'Contact number must start with &quot;09&quot;';
     }
     if (contact.length !== 11) {
       return 'Contact number must be exactly 11 digits';
@@ -793,7 +793,7 @@ export default function AccountManagement() {
         )}
         {field === 'contact_no' && (
           <p className="text-xs text-gray-600 mt-1">
-            Must start with "09" and be exactly 11 digits total
+            Must start with &quot;09&quot; and be exactly 11 digits total
           </p>
         )}
         {field === 'email' && (
@@ -1171,7 +1171,7 @@ export default function AccountManagement() {
                         {/* Action Buttons */}
                         <div className="flex items-center space-x-3">
                           {/* Edit button - Restricted for admin accounts */}
-                          {(user.role !== 'admin' || user.id === currentUser?.id) && (
+                          {(user.role !== "admin" || user.id === currentUser?.id) && (
                             <button
                               onClick={() => startEditUser(user)}
                               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-bold text-sm shadow-md"
@@ -1183,7 +1183,7 @@ export default function AccountManagement() {
                           )}
                           
                           {/* Reset Password button - Restricted for admin accounts */}
-                          {(user.role !== 'admin' || user.id === currentUser?.id) && (
+                          {(user.role !== "admin" || user.id === currentUser?.id) && (
                             <button
                               onClick={() => startResetPassword(user)}
                               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-sm shadow-md"
@@ -1195,7 +1195,7 @@ export default function AccountManagement() {
                           )}
                           
                           {/* Archive button - Only for admins, not for current user, and not for other admins */}
-                          {currentUser?.role === 'admin' && user.id !== currentUser?.id && user.role !== 'admin' && (
+                          {currentUser?.role === "admin" && user.id !== currentUser?.id && user.role !== "admin" && (
                             <button
                               onClick={() => archiveUser(user.id)}
                               className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-bold text-sm shadow-md"
