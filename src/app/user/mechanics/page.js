@@ -30,14 +30,15 @@ const MechanicPage = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-        const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
-        if (!currentUser) {
-          router.push("/");
-          return;
-        }
-        setCurrentUser(currentUser);
-      }, [router]);
-
+          const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+          if (!currentUser) {
+            router.push("/");
+            return;
+          }
+          setCurrentUser(currentUser);
+          fetchMechanics();
+        }, [router]);
+  
   const fetchMechanics = async () => {
     setLoading(true);
     const { data, error } = await supabase
