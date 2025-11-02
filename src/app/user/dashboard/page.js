@@ -25,7 +25,6 @@ ChartJS.register(
 );
 
 export default function UserDashboard({ children }) {
-
   const router = useRouter();
   
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -43,14 +42,17 @@ export default function UserDashboard({ children }) {
   const [showScheduledList, setShowScheduledList] = useState(false);
   const [scheduledMaintenance, setScheduledMaintenance] = useState([]);
   const [scheduledLoading, setScheduledLoading] = useState(false);
+  
+  // NEW: State for analytics date navigation
+  const [analyticsDate, setAnalyticsDate] = useState(new Date());
 
   useEffect(() => {
-    const storedUser = JSON.parse(sessionStorage.getItem("currentUser"));
-    if (!storedUser) {
+    const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
+    if (!currentUser) {
       router.push("/");
       return;
     }
-    if (storedUser.role !== "user") {
+    if (currentUser.role !== "user") {
       router.push("/");
       return;
     }
@@ -65,7 +67,7 @@ export default function UserDashboard({ children }) {
     if (activeTab === 'analytics') {
       fetchGraphData();
     }
-  }, [timeRange, activeTab]);
+  }, [timeRange, activeTab, analyticsDate]); // Added analyticsDate dependency
 
   // Toast notification system
   const showToast = (message, type = 'info') => {
@@ -219,30 +221,77 @@ export default function UserDashboard({ children }) {
     if (!error) setTrucks(data || []);
   };
 
+  // NEW: Navigation functions for analytics
+  const navigateAnalyticsDate = (direction) => {
+    setAnalyticsDate(prev => {
+      const newDate = new Date(prev);
+      switch (timeRange) {
+        case 'week':
+          newDate.setDate(prev.getDate() + (direction * 7));
+          break;
+        case 'month':
+          newDate.setMonth(prev.getMonth() + direction);
+          break;
+        case 'year':
+          newDate.setFullYear(prev.getFullYear() + direction);
+          break;
+      }
+      return newDate;
+    });
+  };
+
+  // NEW: Reset to current period
+  const resetAnalyticsDate = () => {
+    setAnalyticsDate(new Date());
+  };
+
+  // UPDATED: Fetch graph data with proper date ranges
   const fetchGraphData = async () => {
     try {
       setGraphLoading(true);
       
       let startDate, endDate;
-      const now = new Date();
+      const now = new Date(analyticsDate); // Use analyticsDate instead of current date
 
       switch (timeRange) {
         case 'week':
-          startDate = new Date(now.setDate(now.getDate() - 7));
-          endDate = new Date();
+          // Get the start of the week (Sunday)
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - now.getDay()); // Go to Sunday
+          startDate.setHours(0, 0, 0, 0);
+          
+          // Get the end of the week (Saturday)
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6);
+          endDate.setHours(23, 59, 59, 999);
           break;
+          
         case 'month':
+          // Get the start of the month
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          startDate.setHours(0, 0, 0, 0);
+          
+          // Get the end of the month
           endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          endDate.setHours(23, 59, 59, 999);
           break;
+          
         case 'year':
+          // Get the start of the year
           startDate = new Date(now.getFullYear(), 0, 1);
+          startDate.setHours(0, 0, 0, 0);
+          
+          // Get the end of the year
           endDate = new Date(now.getFullYear(), 11, 31);
+          endDate.setHours(23, 59, 59, 999);
           break;
+          
         default:
           startDate = new Date(now.setDate(now.getDate() - 7));
           endDate = new Date();
       }
+
+      console.log('Fetching data for range:', timeRange, 'from', startDate, 'to', endDate);
 
       // Fetch completed maintenance for the selected time range
       const { data: maintenance, error } = await supabase
@@ -256,21 +305,22 @@ export default function UserDashboard({ children }) {
       if (error) throw error;
 
       // Process data based on time range
-      const processedData = processMaintenanceData(maintenance, timeRange);
+      const processedData = processMaintenanceData(maintenance, timeRange, startDate, endDate);
       setGraphData(processedData);
     } catch (error) {
       console.error('Error fetching graph data:', error);
       showToast('Error loading maintenance statistics', 'error');
       // Fallback to sample data
-      setGraphData(getSampleData()[timeRange]);
+      setGraphData(getSampleData(analyticsDate, timeRange));
     } finally {
       setGraphLoading(false);
     }
   };
 
-  const processMaintenanceData = (maintenance, range) => {
+  // UPDATED: Process maintenance data with proper date handling
+  const processMaintenanceData = (maintenance, range, startDate, endDate) => {
     if (!maintenance || maintenance.length === 0) {
-      return getSampleData()[range];
+      return getSampleData(analyticsDate, range);
     }
 
     const maintenanceByPeriod = {};
@@ -281,18 +331,19 @@ export default function UserDashboard({ children }) {
       
       switch (range) {
         case 'week':
-          // Group by day of week
+          // Group by day of week (0-6, where 0 is Sunday)
           periodKey = completedDate.getDay();
           periodLabel = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][periodKey];
           break;
+          
         case 'month':
-          // Group by week of month
-          const weekOfMonth = Math.floor((completedDate.getDate() - 1) / 7) + 1;
-          periodKey = weekOfMonth;
-          periodLabel = `Week ${weekOfMonth}`;
+          // Group by day of month (1-31)
+          periodKey = completedDate.getDate() - 1; // 0-based index for array
+          periodLabel = completedDate.getDate().toString();
           break;
+          
         case 'year':
-          // Group by month
+          // Group by month (0-11)
           periodKey = completedDate.getMonth();
           periodLabel = completedDate.toLocaleDateString('en-US', { month: 'short' });
           break;
@@ -305,27 +356,42 @@ export default function UserDashboard({ children }) {
     });
 
     // Fill in missing periods
-    const result = fillMissingPeriods(maintenanceByPeriod, range);
+    const result = fillMissingPeriods(maintenanceByPeriod, range, startDate, endDate);
     return result;
   };
 
-  const fillMissingPeriods = (data, range) => {
-    const periods = {
-      week: Array.from({ length: 7 }, (_, i) => ({ 
-        label: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i], 
-        count: 0 
-      })),
-      month: Array.from({ length: 4 }, (_, i) => ({ 
-        label: `Week ${i + 1}`, 
-        count: 0 
-      })),
-      year: Array.from({ length: 12 }, (_, i) => ({ 
-        label: new Date(0, i).toLocaleDateString('en-US', { month: 'short' }), 
-        count: 0 
-      }))
-    };
+  // UPDATED: Fill missing periods with proper date ranges
+  const fillMissingPeriods = (data, range, startDate, endDate) => {
+    let periods = [];
+    
+    switch (range) {
+      case 'week':
+        // Always 7 days in a week
+        periods = Array.from({ length: 7 }, (_, i) => ({ 
+          label: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i], 
+          count: 0 
+        }));
+        break;
+        
+      case 'month':
+        // Days in the specific month
+        const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+        periods = Array.from({ length: daysInMonth }, (_, i) => ({ 
+          label: (i + 1).toString(), 
+          count: 0 
+        }));
+        break;
+        
+      case 'year':
+        // Always 12 months
+        periods = Array.from({ length: 12 }, (_, i) => ({ 
+          label: new Date(0, i).toLocaleDateString('en-US', { month: 'short' }), 
+          count: 0 
+        }));
+        break;
+    }
 
-    const result = periods[range];
+    const result = periods;
     
     Object.entries(data).forEach(([key, value]) => {
       const index = parseInt(key);
@@ -341,23 +407,69 @@ export default function UserDashboard({ children }) {
     };
   };
 
-  const getSampleData = () => ({
-    week: {
-      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      data: [3, 5, 2, 6, 4, 1, 2],
-      total: 23
-    },
-    month: {
-      labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-      data: [12, 8, 15, 10],
-      total: 45
-    },
-    year: {
-      labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-      data: [8, 12, 15, 10, 14, 18, 16, 20, 15, 12, 10, 8],
-      total: 158
+  // UPDATED: Get sample data based on current analytics date
+  const getSampleData = (date, range) => {
+    const baseData = {
+      week: {
+        labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        data: [0, 0, 0, 0, 0, 0, 0],
+        total: 0
+      },
+      month: {
+        labels: Array.from({ length: new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() }, (_, i) => (i + 1).toString()),
+        data: Array.from({ length: new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() }, () => 0),
+        total: 0
+      },
+      year: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+        data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        total: 0
+      }
+    };
+    
+    return baseData[range];
+  };
+
+  // NEW: Format date range for display
+  const getDateRangeText = () => {
+    const now = new Date(analyticsDate);
+    
+    switch (timeRange) {
+      case 'week':
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
+        
+        return `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        
+      case 'month':
+        return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        
+      case 'year':
+        return now.getFullYear().toString();
+        
+      default:
+        return '';
     }
-  });
+  };
+
+  // NEW: Check if current period is active
+  const isCurrentPeriod = () => {
+    const now = new Date();
+    const analytics = new Date(analyticsDate);
+    
+    switch (timeRange) {
+      case 'week':
+        return now.getTime() >= analytics.getTime() && now.getTime() < analytics.getTime() + (7 * 24 * 60 * 60 * 1000);
+      case 'month':
+        return now.getMonth() === analytics.getMonth() && now.getFullYear() === analytics.getFullYear();
+      case 'year':
+        return now.getFullYear() === analytics.getFullYear();
+      default:
+        return false;
+    }
+  };
 
   const navigateMonth = (direction) => {
     setCurrentDate(prev => {
@@ -843,158 +955,138 @@ export default function UserDashboard({ children }) {
     }
   };
 
-  // ✅ FIXED: Cancel Maintenance function - removed non-existent column
-  const cancelMaintenance = async (maintenanceId) => {
-    try {
-      console.log('🗑️ Starting cancelMaintenance:', maintenanceId);
-      
-      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-      if (!storedUser?.id) {
-        showToast('You must be logged in to cancel maintenance', 'error');
-        return;
-      }
-
-      // Step 1: Get maintenance details first
-      console.log('📋 Step 1: Getting maintenance details...');
-      const { data: maintenance, error: fetchError } = await supabase
-        .from('maintenance')
-        .select('plate_number, date')
-        .eq('maintenance_id', maintenanceId)
-        .single();
-
-      if (fetchError) {
-        console.error('❌ Fetch error:', fetchError);
-        throw new Error(`Maintenance not found: ${fetchError.message}`);
-      }
-
-      if (!maintenance) {
-        throw new Error('Maintenance record not found');
-      }
-
-      const plateNumber = maintenance.plate_number;
-      console.log('🚛 Maintenance found for truck:', plateNumber);
-
-      // Step 2: Return items to inventory (if any)
-      console.log('📦 Step 2: Returning items to inventory...');
-      const { data: usedItems, error: itemsError } = await supabase
-        .from('maintenance_items')
-        .select('item_id, quantity')
-        .eq('maintenance_id', maintenanceId);
-
-      if (itemsError) {
-        console.error('❌ Items fetch error:', itemsError);
-        // Continue with cancellation even if items fail
-      } else if (usedItems && usedItems.length > 0) {
-        console.log('📦 Items to return:', usedItems);
-        for (const item of usedItems) {
-          const { error: returnError } = await supabase.rpc('increment_inventory_quantity', {
-            item_id_input: item.item_id,
-            qty_input: item.quantity,
-          });
-
-          if (returnError) {
-            console.error('❌ Item return error:', returnError);
-            // Continue with cancellation even if item return fails
-          }
-        }
-      }
-
-      // Step 3: Delete maintenance records
-      console.log('🗑️ Step 3: Deleting maintenance records...');
-      
-      // Delete in correct order to respect foreign key constraints
-      const { error: itemsDeleteError } = await supabase
-        .from('maintenance_items')
-        .delete()
-        .eq('maintenance_id', maintenanceId);
-
-      if (itemsDeleteError) {
-        console.error('❌ Items delete error:', itemsDeleteError);
-      }
-
-      const { error: mechanicsDeleteError } = await supabase
-        .from('maintenance_mechanics')
-        .delete()
-        .eq('maintenance_id', maintenanceId);
-
-      if (mechanicsDeleteError) {
-        console.error('❌ Mechanics delete error:', mechanicsDeleteError);
-      }
-
-      const { error: maintenanceDeleteError } = await supabase
-        .from('maintenance')
-        .delete()
-        .eq('maintenance_id', maintenanceId);
-
-      if (maintenanceDeleteError) {
-        console.error('❌ Maintenance delete error:', maintenanceDeleteError);
-        throw new Error(`Failed to delete maintenance: ${maintenanceDeleteError.message}`);
-      }
-
-      console.log('✅ Maintenance records deleted');
-
-      // Step 4: Check for other pending maintenance and update truck status
-      console.log('🔍 Step 4: Checking for other maintenance...');
-      const { data: pendingMaintenance, error: pendingError } = await supabase
-        .from('maintenance')
-        .select('maintenance_id, date')
-        .eq('plate_number', plateNumber)
-        .eq('status', 'Scheduled');
-
-      if (pendingError) {
-        console.error('❌ Pending check error:', pendingError);
-        throw new Error(`Failed to check pending maintenance: ${pendingError.message}`);
-      }
-
-      console.log('📋 Pending maintenance:', pendingMaintenance);
-
-      let newTruckStatus = 'Available';
-      let message = 'Maintenance canceled. Truck is now Available.';
-
-      if (pendingMaintenance && pendingMaintenance.length > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        const hasMaintenanceToday = pendingMaintenance.some(m => {
-          const maintenanceDate = new Date(m.date).toISOString().split('T')[0];
-          return maintenanceDate === today;
-        });
-
-        newTruckStatus = hasMaintenanceToday ? 'Maintenance' : 'Scheduled';
-        message = `Maintenance canceled. ${pendingMaintenance.length} more maintenance scheduled. Truck status: ${newTruckStatus}.`;
-      }
-
-      console.log('🚛 Step 5: Updating truck status to:', newTruckStatus);
-
-      // Step 5: Update truck status (ONLY status field)
-      const { error: truckError } = await supabase
-        .from('trucks')
-        .update({ status: newTruckStatus })
-        .eq('plate_number', plateNumber);
-
-      if (truckError) {
-        console.error('❌ Truck update error:', truckError);
-        throw new Error(`Failed to update truck status: ${truckError.message}`);
-      }
-
-      console.log('✅ Truck status updated');
-
-      // Step 6: Show success and refresh data
-      showToast(message, 'success');
-
-      // Refresh all data
-      await Promise.all([
-        fetchMaintenanceData(),
-        fetchTrucks(),
-        fetchAllMaintenanceData(),
-        showScheduledList && fetchScheduledMaintenance()
-      ]);
-
-      console.log('✅ All data refreshed after cancellation');
-
-    } catch (error) {
-      console.error('❌ cancelMaintenance error:', error);
-      showToast(`Failed to cancel maintenance: ${error.message}`, 'error');
+// ✅ FIXED: Cancel Maintenance function - removed duplicate inventory return
+const cancelMaintenance = async (maintenanceId) => {
+  try {
+    console.log('🗑️ Starting cancelMaintenance:', maintenanceId);
+    
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+    if (!storedUser?.id) {
+      showToast('You must be logged in to cancel maintenance', 'error');
+      return;
     }
-  };
+
+    // Step 1: Get maintenance details first
+    console.log('📋 Step 1: Getting maintenance details...');
+    const { data: maintenance, error: fetchError } = await supabase
+      .from('maintenance')
+      .select('plate_number, date')
+      .eq('maintenance_id', maintenanceId)
+      .single();
+
+    if (fetchError) {
+      console.error('❌ Fetch error:', fetchError);
+      throw new Error(`Maintenance not found: ${fetchError.message}`);
+    }
+
+    if (!maintenance) {
+      throw new Error('Maintenance record not found');
+    }
+
+    const plateNumber = maintenance.plate_number;
+    console.log('🚛 Maintenance found for truck:', plateNumber);
+
+    // ⚠️ REMOVED: Manual inventory return (Step 2)
+    // The database trigger `trg_restore_inventory` will automatically 
+    // return items when we delete maintenance_items records
+
+    // Step 2: Delete maintenance records (triggers will handle inventory return)
+    console.log('🗑️ Step 2: Deleting maintenance records...');
+    
+    // Delete in correct order to respect foreign key constraints
+    // The trg_restore_inventory trigger will automatically return items to inventory
+    const { error: itemsDeleteError } = await supabase
+      .from('maintenance_items')
+      .delete()
+      .eq('maintenance_id', maintenanceId);
+
+    if (itemsDeleteError) {
+      console.error('❌ Items delete error:', itemsDeleteError);
+    }
+
+    const { error: mechanicsDeleteError } = await supabase
+      .from('maintenance_mechanics')
+      .delete()
+      .eq('maintenance_id', maintenanceId);
+
+    if (mechanicsDeleteError) {
+      console.error('❌ Mechanics delete error:', mechanicsDeleteError);
+    }
+
+    const { error: maintenanceDeleteError } = await supabase
+      .from('maintenance')
+      .delete()
+      .eq('maintenance_id', maintenanceId);
+
+    if (maintenanceDeleteError) {
+      console.error('❌ Maintenance delete error:', maintenanceDeleteError);
+      throw new Error(`Failed to delete maintenance: ${maintenanceDeleteError.message}`);
+    }
+
+    console.log('✅ Maintenance records deleted');
+
+    // Step 3: Check for other pending maintenance and update truck status
+    console.log('🔍 Step 3: Checking for other maintenance...');
+    const { data: pendingMaintenance, error: pendingError } = await supabase
+      .from('maintenance')
+      .select('maintenance_id, date')
+      .eq('plate_number', plateNumber)
+      .eq('status', 'Scheduled');
+
+    if (pendingError) {
+      console.error('❌ Pending check error:', pendingError);
+      throw new Error(`Failed to check pending maintenance: ${pendingError.message}`);
+    }
+
+    console.log('📋 Pending maintenance:', pendingMaintenance);
+
+    let newTruckStatus = 'Available';
+    let message = 'Maintenance canceled. Truck is now Available.';
+
+    if (pendingMaintenance && pendingMaintenance.length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+      const hasMaintenanceToday = pendingMaintenance.some(m => {
+        const maintenanceDate = new Date(m.date).toISOString().split('T')[0];
+        return maintenanceDate === today;
+      });
+
+      newTruckStatus = hasMaintenanceToday ? 'Maintenance' : 'Scheduled';
+      message = `Maintenance canceled. ${pendingMaintenance.length} more maintenance scheduled. Truck status: ${newTruckStatus}.`;
+    }
+
+    console.log('🚛 Step 4: Updating truck status to:', newTruckStatus);
+
+    // Step 4: Update truck status (ONLY status field)
+    const { error: truckError } = await supabase
+      .from('trucks')
+      .update({ status: newTruckStatus })
+      .eq('plate_number', plateNumber);
+
+    if (truckError) {
+      console.error('❌ Truck update error:', truckError);
+      throw new Error(`Failed to update truck status: ${truckError.message}`);
+    }
+
+    console.log('✅ Truck status updated');
+
+    // Step 5: Show success and refresh data
+    showToast(message, 'success');
+
+    // Refresh all data
+    await Promise.all([
+      fetchMaintenanceData(),
+      fetchTrucks(),
+      fetchAllMaintenanceData(),
+      showScheduledList && fetchScheduledMaintenance()
+    ]);
+
+    console.log('✅ All data refreshed after cancellation');
+
+  } catch (error) {
+    console.error('❌ cancelMaintenance error:', error);
+    showToast(`Failed to cancel maintenance: ${error.message}`, 'error');
+  }
+};
 
   // Analytics Data - FIXED VERSION
   const getAnalyticsData = () => {
@@ -1063,8 +1155,9 @@ export default function UserDashboard({ children }) {
     };
   };
 
+  // UPDATED: Analytics Tab with navigation
   const renderAnalyticsTab = () => {
-    const currentStats = graphData || getSampleData()[timeRange];
+    const currentStats = graphData || getSampleData(analyticsDate, timeRange);
     const maxValue = Math.max(...currentStats.data, 1); // Ensure at least 1 to avoid division by zero
 
     const truckMaintenanceData = getAnalyticsData();
@@ -1144,7 +1237,7 @@ export default function UserDashboard({ children }) {
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm font-medium">Completed This {timeRange === 'week' ? 'Week' : timeRange === 'month' ? 'Month' : 'Year'}</p>
+                <p className="text-gray-600 text-sm font-medium">Completed This Period</p>
                 <p className="text-3xl font-bold text-gray-900 mt-2">{currentStats.total}</p>
               </div>
               <div className="p-3 bg-green-500 rounded-xl">
@@ -1152,15 +1245,51 @@ export default function UserDashboard({ children }) {
               </div>
             </div>
             <div className="mt-4 text-sm text-gray-600">
-              Maintenance tasks completed
+              Maintenance tasks completed in selected period
             </div>
           </div>
         </div>
 
-        {/* Maintenance Graph - UPDATED TO BAR CHART */}
+        {/* Maintenance Graph - UPDATED WITH NAVIGATION */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
             <h3 className="text-lg font-bold text-gray-900">Completed Maintenance</h3>
+            
+            {/* Date Navigation */}
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigateAnalyticsDate(-1)}
+                className="p-2 bg-red-400 rounded-lg hover:bg-red-500 transition-colors"
+                title="Previous period"
+              >
+                <i className="fas fa-chevron-left text-gray-600"></i>
+              </button>
+              
+              <div className="text-center min-w-[200px]">
+                <div className="font-semibold text-gray-900">{getDateRangeText()}</div>
+                <div className="text-sm text-gray-500 capitalize">{timeRange} view</div>
+              </div>
+              
+              <button
+                onClick={() => navigateAnalyticsDate(1)}
+                className="p-2 bg-green-400 rounded-lg hover:bg-green-500 transition-colors"
+                title="Next period"
+              >
+                <i className="fas fa-chevron-right text-gray-600"></i>
+              </button>
+              
+              {!isCurrentPeriod() && (
+                <button
+                  onClick={resetAnalyticsDate}
+                  className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+                  title="Go to current period"
+                >
+                  Today
+                </button>
+              )}
+            </div>
+
+            {/* Time Range Selector */}
             <div className="flex space-x-2">
               <button
                 onClick={() => setTimeRange('week')}
@@ -1207,7 +1336,7 @@ export default function UserDashboard({ children }) {
               
               <div className="mt-4 text-center">
                 <p className="text-gray-600">
-                  Total completed maintenance this {timeRange}: <span className="font-bold text-gray-900">{currentStats.total}</span>
+                  Total completed maintenance this period: <span className="font-bold text-gray-900">{currentStats.total}</span>
                 </p>
               </div>
             </>

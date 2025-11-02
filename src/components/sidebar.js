@@ -147,6 +147,20 @@ export default function Sidebar({ role }) {
               </Link>
             </li>
 
+            {/* Truck Deployment (Hidden for Admin) */}
+            {!isAdmin && (
+              <li>
+                <Link 
+                  href={`/${role}/truckDeployment`} 
+                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-amber-600/20 hover:border-l-4 hover:border-amber-400 transition-all duration-200 group"
+                  onClick={handleLinkClick}
+                >
+                  <Truck className="w-5 h-5 text-amber-300 group-hover:text-amber-100" /> 
+                  <span className="group-hover:translate-x-1 transition-transform">Truck Deployment</span>
+                </Link>
+              </li>
+            )}
+
             {/* Maintenance (Hidden for Admin) */}
             {!isAdmin && (
               <li>
@@ -157,6 +171,20 @@ export default function Sidebar({ role }) {
                 >
                   <ClipboardList className="w-5 h-5 text-amber-300 group-hover:text-amber-100" /> 
                   <span className="group-hover:translate-x-1 transition-transform">Maintenance</span>
+                </Link>
+              </li>
+            )}
+
+             {/* Job Order (Hidden for Admin) */}
+            {!isAdmin && (
+              <li>
+                <Link 
+                  href={`/${role}/jobOrder`} 
+                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-amber-600/20 hover:border-l-4 hover:border-amber-400 transition-all duration-200 group"
+                  onClick={handleLinkClick}
+                >
+                  <FileText className="w-5 h-5 text-amber-300 group-hover:text-amber-100" /> 
+                  <span className="group-hover:translate-x-1 transition-transform">Job Order</span>
                 </Link>
               </li>
             )}
@@ -214,19 +242,7 @@ export default function Sidebar({ role }) {
               </Link>
             </li>
 
-            {/* Invoice (Hidden for Admin) */}
-            {!isAdmin && (
-              <li>
-                <Link 
-                  href={`/${role}/invoice`} 
-                  className="flex items-center gap-3 p-3 rounded-lg hover:bg-amber-600/20 hover:border-l-4 hover:border-amber-400 transition-all duration-200 group"
-                  onClick={handleLinkClick}
-                >
-                  <FileText className="w-5 h-5 text-amber-300 group-hover:text-amber-100" /> 
-                  <span className="group-hover:translate-x-1 transition-transform">Invoice</span>
-                </Link>
-              </li>
-            )}
+           
 
             {/* User Requests */}
             {!isAdmin && (
@@ -287,16 +303,18 @@ export default function Sidebar({ role }) {
                     <span className="text-sm group-hover:translate-x-1 transition-transform">Request</span>
                   </Link>
                 </li>
-                <li>
+               {/* <li>
+
+                  Deployment Logs 
                   <Link 
-                    href={`/${role}/invoiceLogs`} 
+                    href={`/${role}/deploymentLogs`} 
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-amber-600/20 hover:border-l-4 hover:border-amber-400 transition-all duration-200 group"
                     onClick={handleLinkClick}
                   >
                     <FileText className="w-4 h-4 text-amber-300 group-hover:text-amber-100" /> 
-                    <span className="text-sm group-hover:translate-x-1 transition-transform">Invoice Logs</span>
+                    <span className="text-sm group-hover:translate-x-1 transition-transform">Deployment</span>
                   </Link>
-                </li>
+                </li>*/}
                 <li>
                   <Link 
                     href={`/${role}/maintenanceLogs`} 
