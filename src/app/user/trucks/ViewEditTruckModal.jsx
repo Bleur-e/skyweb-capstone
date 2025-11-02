@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from "react";
 import supabase from "../../../supabaseClient";
 
-const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
+const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive, changeOilInterval }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editableTruckData, setEditableTruckData] = useState(truck);
   const [availableDrivers, setAvailableDrivers] = useState([]);
   const [allDrivers, setAllDrivers] = useState([]);
+  const [calculatedNextOilChange, setCalculatedNextOilChange] = useState(null);
 
   useEffect(() => {
     // Reset editable data and editing state when truck prop changes
     setEditableTruckData(truck);
     setIsEditing(false);
+    setCalculatedNextOilChange(null);
 
     // Fetch drivers when the modal opens or truck changes
     if (isOpen && truck) {
@@ -37,11 +39,17 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
     }
   }, [truck, isOpen]);
 
-  if (!isOpen || !truck) return null;
+  // Calculate next oil change when last_change_oil_odometer changes
+  useEffect(() => {
+    if (editableTruckData.last_change_oil_odometer && changeOilInterval) {
+      const nextOilChange = Number(editableTruckData.last_change_oil_odometer) + Number(changeOilInterval);
+      setCalculatedNextOilChange(nextOilChange);
+    } else {
+      setCalculatedNextOilChange(null);
+    }
+  }, [editableTruckData.last_change_oil_odometer, changeOilInterval]);
 
-  // Determine if the truck is in a restricted status
-  const restrictedStatuses = ["Deployed", "Scheduled", "Maintenance"];
-  const isRestrictedStatus = restrictedStatuses.includes(truck.status);
+  if (!isOpen || !truck) return null;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -74,10 +82,6 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
     ? allDrivers.find((d) => d.driver_id === editableTruckData.driver)?.name || "Unknown Driver (ID: " + editableTruckData.driver + ")"
     : "No current assigned driver";
 
-  // Check if edit should be disabled
-  const canEdit = !isRestrictedStatus;
-  const canArchive = !isRestrictedStatus && !truck.driver;
-
   return (
     <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6 relative">
@@ -85,20 +89,6 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
         <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-3">
           {isEditing ? "Edit Truck Details" : "Truck Information"}
         </h2>
-
-        {/* Status Warning */}
-        {isRestrictedStatus && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <span className="text-yellow-800 font-medium">
-                Editing and archiving are restricted while truck status is "{truck.status}"
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* Truck Image */}
         {truck.photo_url && (
@@ -111,25 +101,35 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
           </div>
         )}
 
+        {/* Oil Change Information */}
+        {changeOilInterval && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-blue-800 font-medium">
+                  Oil Change Interval: {changeOilInterval.toLocaleString()} km
+                </span>
+              </div>
+              {calculatedNextOilChange && isEditing && (
+                <span className="text-green-700 font-semibold">
+                  Next oil change: {calculatedNextOilChange.toLocaleString()} km
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Form / View */}
         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-gray-700">
-            {/* Left Side */}
+            {/* Left Side - Non-editable fields */}
             <div className="space-y-3">
               <div>
                 <label className="font-semibold text-gray-600">Plate Number:</label>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    name="plate_number"
-                    value={editableTruckData.plate_number}
-                    onChange={handleChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                ) : (
-                  <p className="mt-1">{truck.plate_number}</p>
-                )}
+                <p className="mt-1">{truck.plate_number}</p>
               </div>
 
               <div>
@@ -151,10 +151,33 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
                 <label className="font-semibold text-gray-600">Status:</label>
                 <p className="mt-1">{truck.status}</p>
               </div>
+
+              {/* Non-editable fields in both view and edit mode */}
+              {truck.next_change_oil_odometer && (
+                <div>
+                  <label className="font-semibold text-gray-600">Next Change Oil (KM):</label>
+                  <p className="mt-1">{truck.next_change_oil_odometer.toLocaleString()} km</p>
+                </div>
+              )}
+
+              {truck.encoded_by && (
+                <div>
+                  <label className="font-semibold text-gray-600">Encoded By:</label>
+                  <p className="mt-1">{truck.encoded_by}</p>
+                </div>
+              )}
+
+              {truck.created_at && (
+                <div>
+                  <label className="font-semibold text-gray-600">Created At:</label>
+                  <p className="mt-1">{new Date(truck.created_at).toLocaleDateString()}</p>
+                </div>
+              )}
             </div>
 
-            {/* Right Side */}
+            {/* Right Side - Editable fields */}
             <div className="space-y-3">
+              {/* Driver Field */}
               <div>
                 <label className="font-semibold text-gray-600">Driver:</label>
                 {isEditing ? (
@@ -176,6 +199,7 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
                 )}
               </div>
 
+              {/* Current Odometer Field */}
               <div>
                 <label className="font-semibold text-gray-600">Current Odometer (KM):</label>
                 {isEditing ? (
@@ -191,38 +215,49 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
                 )}
               </div>
 
-              {/* Non-editable fields in view mode */}
-              {!isEditing && (
-                <>
-                  {truck.last_change_oil_odometer && (
-                    <div>
-                      <label className="font-semibold text-gray-600">Last Change Oil Odometer (KM):</label>
-                      <p className="mt-1">{truck.last_change_oil_odometer?.toLocaleString()} km</p>
-                    </div>
-                  )}
+              {/* Last Change Oil Odometer Field */}
+              <div>
+                <label className="font-semibold text-gray-600">Last Change Oil Odometer (KM):</label>
+                {isEditing ? (
+                  <div>
+                    <input
+                      type="number"
+                      name="last_change_oil_odometer"
+                      value={editableTruckData.last_change_oil_odometer || ""}
+                      onChange={handleChange}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Enter last oil change odometer"
+                    />
+                    {calculatedNextOilChange && (
+                      <p className="text-sm text-green-600 mt-1">
+                        Next oil change will be set to: {calculatedNextOilChange.toLocaleString()} km
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-1">{truck.last_change_oil_odometer?.toLocaleString() || "N/A"} km</p>
+                )}
+              </div>
 
-                  {truck.next_change_oil_odometer && (
-                    <div>
-                      <label className="font-semibold text-gray-600">Next Change Oil (KM):</label>
-                      <p className="mt-1">{truck.next_change_oil_odometer.toLocaleString()} km</p>
-                    </div>
-                  )}
-
-                  {truck.encoded_by && (
-                    <div>
-                      <label className="font-semibold text-gray-600">Encoded By:</label>
-                      <p className="mt-1">{truck.encoded_by}</p>
-                    </div>
-                  )}
-
-                  {truck.created_at && (
-                    <div>
-                      <label className="font-semibold text-gray-600">Created At:</label>
-                      <p className="mt-1">{new Date(truck.created_at).toLocaleDateString()}</p>
-                    </div>
-                  )}
-                </>
-              )}
+              {/* Last Change Oil Date Field */}
+              <div>
+                <label className="font-semibold text-gray-600">Last Change Oil Date:</label>
+                {isEditing ? (
+                  <input
+                    type="date"
+                    name="last_change_oil_date"
+                    value={editableTruckData.last_change_oil_date || ""}
+                    onChange={handleChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                ) : (
+                  <p className="mt-1">
+                    {truck.last_change_oil_date 
+                      ? new Date(truck.last_change_oil_date).toLocaleDateString() 
+                      : "N/A"}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -233,21 +268,16 @@ const ViewEditTruckModal = ({ isOpen, onClose, truck, onEdit, onArchive }) => {
                 <button
                   type="button"
                   onClick={() => setIsEditing(true)}
-                  disabled={!canEdit}
-                  className={`font-semibold py-2 px-4 rounded-lg shadow-md transition ${
-                    !canEdit
-                      ? "bg-gray-400 cursor-not-allowed text-gray-600"
-                      : "bg-yellow-500 hover:bg-yellow-600 text-white"
-                  }`}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
                   onClick={() => onArchive(truck)}
-                  disabled={!canArchive}
+                  disabled={truck.driver || ["Deployed", "Maintenance", "Scheduled"].includes(truck.status)}
                   className={`font-semibold py-2 px-4 rounded-lg shadow-md transition ${
-                    !canArchive
+                    truck.driver || ["Deployed", "Maintenance", "Scheduled"].includes(truck.status)
                       ? "bg-gray-400 cursor-not-allowed text-gray-600"
                       : "bg-red-600 hover:bg-red-700 text-white"
                   }`}

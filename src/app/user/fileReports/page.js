@@ -110,7 +110,6 @@ const FileReportsPage = () => {
           >
             <option value="">-- Select Report --</option>
             <option value="/reports/user-request-log.html">User Request Log</option>
-            <option value="/reports/transaction-log.html">Transaction Log</option>
             <option value="/reports/maintenance-log.html">Maintenance Log</option>
             <option value="/reports/audit-log.html">Audit Log</option>
           </select>

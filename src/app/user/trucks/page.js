@@ -7,7 +7,6 @@ import DeployTruckModal from "./DeployTruckModal";
 import supabase from "../../../supabaseClient";
 import ConfirmPopup from "../../../components/ConfirmPopup";
 
-
 // Enhanced Alert Popup (keep your existing one)
 const AlertPopup = ({ message, onClose }) => (
   <div className="fixed inset-0 backdrop-blur-md bg-gray-900/20 flex items-center justify-center p-4 z-40">
@@ -37,12 +36,14 @@ const TrucksPage = () => {
   const router = useRouter();
   const [trucks, setTrucks] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [truckSpecs, setTruckSpecs] = useState([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [selectedTruck, setSelectedTruck] = useState(null);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("All");
 
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
@@ -61,8 +62,6 @@ const TrucksPage = () => {
     setAlertMessage("");
   };
   
-
-  
   // ✅ Fetch current logged-in user with authentication check
   useEffect(() => {
     const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
@@ -74,9 +73,8 @@ const TrucksPage = () => {
     
     fetchTrucks();
     fetchDrivers();
+    fetchTruckSpecs();
   }, [router]);
-
-  
 
   // ✅ Fetch trucks (not archived)
   const fetchTrucks = async () => {
@@ -98,34 +96,51 @@ const TrucksPage = () => {
     else setDrivers(data || []);
   };
 
- // ✅ Simplified Audit Log Helper - Use direct action names
-const addAuditLog = async (action, tableName, description, recordId = null) => {
-  if (!currentUser) {
-    console.error("No current user found for audit log");
-    return;
-  }
-  
-  try {
-    const { error } = await supabase.from('audit_logs').insert([
-      {
-        user_id: currentUser.id,
-        username: currentUser.username,
-        role: currentUser.role,
-        action: action, // Use the actual action name directly
-        table_name: tableName,
-        record_id: recordId,
-        description,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    if (error) {
-      console.error('Error logging action:', error.message);
-      throw error;
+  // ✅ Fetch truck specifications
+  const fetchTruckSpecs = async () => {
+    const { data, error } = await supabase.from("truck_specs").select("*");
+    if (error) console.error("Error fetching truck specs:", error);
+    else setTruckSpecs(data || []);
+  };
+
+  // ✅ Get change oil interval for a specific truck
+  const getChangeOilInterval = (truck) => {
+    const spec = truckSpecs.find(spec => 
+      spec.brand === truck.brand && 
+      spec.model === truck.model && 
+      spec.type === truck.type
+    );
+    return spec ? spec.change_oil_interval : 15000; // Default to 15,000 km if not found
+  };
+
+  // ✅ Simplified Audit Log Helper - Use direct action names
+  const addAuditLog = async (action, tableName, description, recordId = null) => {
+    if (!currentUser) {
+      console.error("No current user found for audit log");
+      return;
     }
-  } catch (error) {
-    console.error('Failed to add audit log:', error);
-  }
-};
+    
+    try {
+      const { error } = await supabase.from('audit_logs').insert([
+        {
+          user_id: currentUser.id,
+          username: currentUser.username,
+          role: currentUser.role,
+          action: action, // Use the actual action name directly
+          table_name: tableName,
+          record_id: recordId,
+          description,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      if (error) {
+        console.error('Error logging action:', error.message);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Failed to add audit log:', error);
+    }
+  };
 
   // ✅ Add Truck with Audit Log
   const handleAddTruck = async (newTruckData) => {
@@ -153,88 +168,92 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
     }
   };
 
-  // ✅ Enhanced Edit Truck with restrictions and audit log
-  const handleEditTruck = async (updatedTruckData) => {
-    try {
-      // Check authentication
-      const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
-      if (!storedUser?.id) {
-        showAlertPopup("You must be logged in to edit a truck.");
-        router.push("/");
+  // ✅ Enhanced Edit Truck with automatic next change oil calculation
+const handleEditTruck = async (updatedTruckData) => {
+  try {
+    // Check authentication
+    const storedUser = JSON.parse(sessionStorage.getItem('currentUser'));
+    if (!storedUser?.id) {
+      showAlertPopup("You must be logged in to edit a truck.");
+      router.push("/");
+      return;
+    }
+
+    // Only allow editing specific fields
+    const allowedFields = ['driver', 'current_odometer', 'last_change_oil_odometer', 'last_change_oil_date'];
+    const updateData = {};
+    
+    allowedFields.forEach(field => {
+      if (field in updatedTruckData) {
+        updateData[field] = updatedTruckData[field];
+      }
+    });
+
+    // Handle driver assignment - convert "No current driver assigned" to null
+    if (updateData.driver === "No current driver assigned" || updateData.driver === "" || updateData.driver === null) {
+      updateData.driver = null;
+    }
+
+    // Validate driver exists only if a driver is being assigned (not null)
+    if (updateData.driver && updateData.driver !== null) {
+      const { data: driverData, error: driverError } = await supabase
+        .from("drivers")
+        .select("driver_id")
+        .eq("driver_id", updateData.driver)
+        .single();
+
+      if (driverError || !driverData) {
+        showAlertPopup("❌ Selected driver does not exist. Please choose a valid driver.");
         return;
-      }
-
-      // Check if editing is allowed based on status
-      const restrictedStatuses = ["Deployed", "Scheduled", "Maintenance"];
-      if (restrictedStatuses.includes(updatedTruckData.status)) {
-        showAlertPopup(`🚫 Cannot edit truck with status: ${updatedTruckData.status}`);
-        return;
-      }
-
-      // Only allow editing specific fields
-      const allowedFields = ['plate_number', 'driver', 'current_odometer'];
-      const updateData = {};
-      
-      allowedFields.forEach(field => {
-        if (field in updatedTruckData) {
-          updateData[field] = updatedTruckData[field];
-        }
-      });
-
-      // Handle driver assignment - convert "No current driver assigned" to null
-      if (updateData.driver === "No current driver assigned" || updateData.driver === "" || updateData.driver === null) {
-        updateData.driver = null;
-      }
-
-      // Validate driver exists only if a driver is being assigned (not null)
-      if (updateData.driver && updateData.driver !== null) {
-        const { data: driverData, error: driverError } = await supabase
-          .from("drivers")
-          .select("driver_id")
-          .eq("driver_id", updateData.driver)
-          .single();
-
-        if (driverError || !driverData) {
-          showAlertPopup("❌ Selected driver does not exist. Please choose a valid driver.");
-          return;
-        }
-      }
-
-      // Convert odometer to number
-      if (updateData.current_odometer) {
-        updateData.current_odometer = Number(updateData.current_odometer) || 0;
-      }
-
-      const { error } = await supabase
-        .from("trucks")
-        .update(updateData)
-        .eq("plate_number", updatedTruckData.plate_number);
-
-      if (error) throw error;
-
-      // Add audit log after successful update
-      await addAuditLog(
-        'Edit',
-        'trucks',
-        `Updated details of truck ${updatedTruckData.plate_number}`,
-        updatedTruckData.plate_number
-      );
-      
-      fetchTrucks();
-      setIsViewEditModalOpen(false);
-      setSelectedTruck(null);
-      showAlertPopup("✅ Truck updated successfully!");
-    } catch (err) {
-      console.error("Error editing truck:", err);
-      
-      // More specific error messages
-      if (err.code === '23503') { // Foreign key violation
-        showAlertPopup("❌ Cannot assign driver: Driver does not exist in the system.");
-      } else {
-        showAlertPopup("❌ Failed to update truck.");
       }
     }
-  };
+
+    // Convert odometer to number
+    if (updateData.current_odometer) {
+      updateData.current_odometer = Number(updateData.current_odometer) || 0;
+    }
+
+    if (updateData.last_change_oil_odometer) {
+      updateData.last_change_oil_odometer = Number(updateData.last_change_oil_odometer) || 0;
+      
+      // ✅ AUTOMATIC NEXT CHANGE OIL CALCULATION
+      // Use selectedTruck instead of truck
+      const changeOilInterval = getChangeOilInterval(selectedTruck);
+      updateData.next_change_oil_odometer = updateData.last_change_oil_odometer + changeOilInterval;
+      
+      showAlertPopup(`🛢️ Next oil change scheduled at ${updateData.next_change_oil_odometer.toLocaleString()} km`);
+    }
+
+    const { error } = await supabase
+      .from("trucks")
+      .update(updateData)
+      .eq("plate_number", updatedTruckData.plate_number);
+
+    if (error) throw error;
+
+    // Add audit log after successful update
+    await addAuditLog(
+      'Edit',
+      'trucks',
+      `Updated details of truck ${updatedTruckData.plate_number}`,
+      updatedTruckData.plate_number
+    );
+    
+    fetchTrucks();
+    setIsViewEditModalOpen(false);
+    setSelectedTruck(null);
+    showAlertPopup("✅ Truck updated successfully!");
+  } catch (err) {
+    console.error("Error editing truck:", err);
+    
+    // More specific error messages
+    if (err.code === '23503') { // Foreign key violation
+      showAlertPopup("❌ Cannot assign driver: Driver does not exist in the system.");
+    } else {
+      showAlertPopup("❌ Failed to update truck.");
+    }
+  }
+};
 
   // ✅ Enhanced Archive Truck with restrictions and audit log
   const handleArchiveTruck = (truck) => {
@@ -319,6 +338,11 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
     return driver?.name || "No Driver Assigned";
   };
 
+  // ✅ Filter trucks based on status
+  const filteredTrucks = statusFilter === "All" 
+    ? trucks 
+    : trucks.filter(truck => truck.status === statusFilter);
+
   // Redirect to login if user is not authenticated
   if (!currentUser) {
     return (
@@ -350,18 +374,37 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Fleet Overview</h3>
-                <p className="text-gray-600 text-sm">{trucks.length} active trucks in your fleet</p>
+                <p className="text-gray-600 text-sm">{filteredTrucks.length} trucks found</p>
               </div>
             </div>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-sm transition duration-300 flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Truck
-            </button>
+            
+            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+              {/* Status Filter Dropdown */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter by Status:</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="border border-gray-300 text-gray-700 rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="All">All Status</option>
+                  <option value="Available">Available</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Deployed">Deployed</option>
+                </select>
+              </div>
+              
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-sm transition duration-300 flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Truck
+              </button>
+            </div>
           </div>
         </div>
 
@@ -383,6 +426,7 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
                       "Type",
                       "Model",
                       "Odometer",
+                      "Next Oil Change",
                       "Status",
                       "Actions",
                     ].map((head) => (
@@ -396,7 +440,7 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {trucks.map((truck) => (
+                  {filteredTrucks.map((truck) => (
                     <tr key={truck.plate_number} className="hover:bg-gray-50 transition duration-150">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="font-medium text-gray-900">{truck.plate_number}</div>
@@ -415,6 +459,9 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
                       <td className="px-6 py-4 whitespace-nowrap text-gray-900">{truck.model}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-gray-900">
                         {truck.current_odometer?.toLocaleString()} km
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-900">
+                        {truck.next_change_oil_odometer?.toLocaleString()} km
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
@@ -439,15 +486,6 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
                           >
                             View
                           </button>
-                          <button
-                            onClick={() => {
-                              setSelectedTruck(truck);
-                              setIsDeployModalOpen(true);
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-sm transition duration-300"
-                          >
-                            Deploy
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -456,13 +494,15 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
               </table>
             </div>
           )}
-          {trucks.length === 0 && !loading && (
+          {filteredTrucks.length === 0 && !loading && (
             <div className="text-center py-12">
               <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
               <h3 className="mt-4 text-lg font-medium text-gray-900">No trucks found</h3>
-              <p className="mt-2 text-gray-500">Get started by adding your first truck.</p>
+              <p className="mt-2 text-gray-500">
+                {statusFilter !== "All" ? `No trucks with status "${statusFilter}"` : "Get started by adding your first truck."}
+              </p>
               <button
                 onClick={() => setIsAddModalOpen(true)}
                 className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition duration-300"
@@ -493,20 +533,11 @@ const addAuditLog = async (action, tableName, description, recordId = null) => {
             drivers={drivers}
             onEdit={handleEditTruck}
             onArchive={handleArchiveTruck}
+            changeOilInterval={getChangeOilInterval(selectedTruck)}
           />
         )}
 
-        {/* Deploy Modal */}
-        {selectedTruck && (
-          <DeployTruckModal
-            isOpen={isDeployModalOpen}
-            onClose={() => setIsDeployModalOpen(false)}
-            truck={selectedTruck}
-            driver={drivers.find((d) => d.driver_id === selectedTruck.driver)}
-            refreshTrucks={fetchTrucks}
-            currentUser={currentUser}
-          />
-        )}
+        {/* Deploy Modal - Removed as per requirements */}
 
         {showAlert && <AlertPopup message={alertMessage} onClose={closeAlertPopup} />}
 
